@@ -1156,7 +1156,6 @@ void Solver::vivify(const CRef cr, vec<Lit> & out) {
 		}
 	}
 	cancelUntil(0);
-
 }
 
 lbool Solver::vivifyDB() {
@@ -1179,34 +1178,35 @@ lbool Solver::vivifyDB() {
 	assert(limit <= learnts.size());
 	vec<Lit> vivCl;
 	for (int i = learnts.size() - 1; i >= limit; --i) {
-		CRef cr = learnts[i];
-		Clause& c = ca[cr];
-		assert(c.size() > 1);
-		if (!c.isVivified() && !c.getOneWatched()
-				&& c.size() < lbSizeMinimizingClause
-				&& c.lbd() < lbLBDMinimizingClause) {
-			c.setVivified(true);
-			vivify(cr, vivCl);
-			assert(ca[cr].lbd() == ca[learnts[i]].lbd());
+		CRef ref = learnts[i];
+		assert(ca[ref].size() > 1);
+		if (!ca[ref].isVivified() && !ca[ref].getOneWatched()
+				&& ca[ref].size() < lbSizeMinimizingClause
+				&& ca[ref].lbd() < lbLBDMinimizingClause) {
+			ca[ref].setVivified(true);
+			vivify(ref, vivCl);
 			assert(decisionLevel() == 0);
 			if (vivCl.size() == 1) {
-				if (!enqueue(vivCl[0], cr))
+				if (!enqueue(vivCl[0], ref))
 					return l_False;
 				nbUn++;
 			} else if (vivCl.size() == 0) {
-				removeClause(cr, false);
+				removeClause(ref, false);
 				learnts[i] = learnts.last();
 				learnts.pop();
-			} else if (c.size() > vivCl.size()) {
+			} else if (ca[ref].size() > vivCl.size()) {
+				if(ref == 2348040)
+					std::cout << "foundit\n";
 				assert(vivCl.size() > 1);
 				CRef cr = ca.alloc(vivCl, true);
-				ca[cr].setLBD(std::min(c.lbd(), (unsigned) vivCl.size() - 1));
-				ca[cr].setOneWatched(false);
-				ca[cr].setSizeWithoutSelectors(vivCl.size());
-				ca[cr].setVivified(true);
-				ca[cr].setCanBeDel(c.canBeDel());
-				ca[cr].setExported(c.getExported());
-				ca[cr].activity() = c.activity();
+				Clause & newC = ca[cr];
+				newC.setLBD(std::min(ca[ref].lbd(), (unsigned) vivCl.size() - 1));
+				newC.setOneWatched(false);
+				newC.setSizeWithoutSelectors(vivCl.size());
+				newC.setVivified(true);
+				newC.setCanBeDel(ca[ref].canBeDel());
+				newC.setExported(ca[ref].getExported());
+				newC.activity() = ca[ref].activity();
 				removeClause(learnts[i]);
 				learnts[i] = cr;
 				attachClause(cr);
