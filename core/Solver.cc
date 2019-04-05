@@ -1452,13 +1452,14 @@ lbool Solver::search(int nof_conflicts) {
 					bt = (decisionLevel() < assumptions.size()) ?
 							decisionLevel() : assumptions.size();
 				cancelUntil(bt);
-				if (opt_vivification && !vivi_was_fired
+				if (!vivi_was_fired
 						&& conflicts
 								>= ((unsigned int) curRestart
 										* nbclausesbeforereduce)
 						&& learnts.size() > 0) {
 					vivi_was_fired = true;
-					return vivifyDB();
+
+					return (opt_vivification) ? vivifyDB() : l_Undef;
 				}
 				return l_Undef;
 			}
@@ -1472,7 +1473,7 @@ lbool Solver::search(int nof_conflicts) {
 					>= ((unsigned int) curRestart * nbclausesbeforereduce)) {
 
 				if (learnts.size() > 0
-						&& (!opt_vivification || vivi_was_fired)) {
+						&& (vivi_was_fired)) {
 					vivi_was_fired = false;
 					curRestart = (conflicts / nbclausesbeforereduce) + 1;
 					reduceDB();
