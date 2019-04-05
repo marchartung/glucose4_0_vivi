@@ -926,7 +926,6 @@ void Solver::uncheckedEnqueue(Lit p, CRef from) {
 CRef Solver::propagate(const CRef exclude) {
 	CRef confl = CRef_Undef;
 	int num_props = 0;
-	int previousqhead = qhead;
 	watches.cleanAll();
 	watchesBin.cleanAll();
 	unaryWatches.cleanAll();
@@ -1136,7 +1135,8 @@ void Solver::vivify(const CRef cr, vec<Lit> & out) {
 	const Clause & c = ca[cr];
 	out.clear();
 	CRef prop = CRef_Undef;
-	for (int i = 0; i < c.size(); ++i) {
+	int i = 0;
+	for (; i < c.size(); ++i) {
 		if (value(c[i]) == l_Undef) {
 			if (i != c.size() - 1) {
 				assert(prop == CRef_Undef);
@@ -1155,11 +1155,14 @@ void Solver::vivify(const CRef cr, vec<Lit> & out) {
 			break;
 		}
 	}
+	if(i == c.size() && out.size() == 0)
+		ok = false;
 	cancelUntil(0);
 }
 
 lbool Solver::vivifyDB() {
 	//return l_Undef;
+	assert(ok);
 	assert(decisionLevel() == 0);
 	int limit = learnts.size() / 2;
 	uint64_t numStartProps = propagations;
@@ -1167,14 +1170,6 @@ lbool Solver::vivifyDB() {
 
 	//find better part of clauses:
 
-	for (int i = 0; i < learnts.size(); ++i) {
-		Clause& c = ca[learnts[i]];
-		if (i < limit) {
-			if (locked(c))
-				++limit;
-		} else
-			break;
-	}
 	assert(limit <= learnts.size());
 	vec<Lit> vivCl;
 	for (int i = learnts.size() - 1; i >= limit; --i) {
@@ -1182,7 +1177,7 @@ lbool Solver::vivifyDB() {
 		assert(ca[ref].size() > 1);
 		if (!ca[ref].isVivified() && !ca[ref].getOneWatched()
 				&& ca[ref].size() < lbSizeMinimizingClause
-				&& ca[ref].lbd() < lbLBDMinimizingClause) {
+				&& ca[ref].lbd() < lbLBDMinimizingClause && !locked(ca[ref])) {
 			ca[ref].setVivified(true);
 			vivify(ref, vivCl);
 			assert(decisionLevel() == 0);
@@ -1191,12 +1186,11 @@ lbool Solver::vivifyDB() {
 					return l_False;
 				nbUn++;
 			} else if (vivCl.size() == 0) {
+				if(!ok) return l_False;
 				removeClause(ref, false);
 				learnts[i] = learnts.last();
 				learnts.pop();
 			} else if (ca[ref].size() > vivCl.size()) {
-				if(ref == 2348040)
-					std::cout << "foundit\n";
 				assert(vivCl.size() > 1);
 				CRef cr = ca.alloc(vivCl, true);
 				Clause & newC = ca[cr];
@@ -1207,6 +1201,9 @@ lbool Solver::vivifyDB() {
 				newC.setCanBeDel(ca[ref].canBeDel());
 				newC.setExported(ca[ref].getExported());
 				newC.activity() = ca[ref].activity();
+				newC.mark(ca[ref].mark());
+				newC.setSeen(ca[ref].getSeen());
+
 				removeClause(learnts[i]);
 				learnts[i] = cr;
 				attachClause(cr);
