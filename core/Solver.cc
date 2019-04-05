@@ -203,7 +203,7 @@ Solver::Solver(const Solver &s) :
 				s.nbReducedClauses), nbDL2(s.nbDL2), nbBin(s.nbBin), nbUn(
 				s.nbUn), nbReduceDB(s.nbReduceDB), solves(s.solves), starts(
 				s.starts), decisions(s.decisions), rnd_decisions(
-				s.rnd_decisions), propagations(s.propagations), conflicts(
+				s.rnd_decisions), propagations(s.propagations), viviPropagations(s.viviPropagations), conflicts(
 				s.conflicts), conflictsRestarts(s.conflictsRestarts), nbstopsrestarts(
 				s.nbstopsrestarts), nbstopsrestartssame(s.nbstopsrestartssame), lastblockatrestart(
 				s.lastblockatrestart), dec_vars(s.dec_vars), clauses_literals(

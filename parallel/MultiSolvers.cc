@@ -293,9 +293,9 @@ void MultiSolvers::printStats() {
 		totalviviprop+= solvers[i]->viviPropagations;
     }
     printf("c \n");
-   
-    printf("c synthesis %11lld conflicts %11lld propagations %8.0f conflicts/sec %8.0f propagations/sec %11lld vivi props\n",
-            totalconf, totalprop, (double)totalconf / cpu_time, (double) totalprop / cpu_time, totalviviprop);
+   printf("fuck\n");
+    printf("c synthesis %11lld conflicts %11lld propagations %8.0f conflicts/sec %8.0f propagations/sec %5.1f%%  vivi props\n",
+            totalconf, totalprop, (double)totalconf / cpu_time, (double) totalprop / cpu_time, 100.0*(double)totalviviprop/totalprop);
 
 
 	nbprinted ++;
