@@ -286,13 +286,15 @@ void MultiSolvers::printStats() {
     }
 	long long int totalconf = 0;
 	long long int totalprop = 0;
+	long long int totalviviprop = 0;
 	for(int i=0;i<solvers.size();i++) {
 		totalconf+=  (long int) solvers[i]->conflicts;
 		totalprop+= solvers[i]->propagations;
+		totalviviprop+= solvers[i]->viviPropagations;
     }
     printf("c \n");
    
-    printf("c synthesis %11lld conflicts %11lld propagations %8.0f conflicts/sec %8.0f propagations/sec\n",
+    printf("c synthesis %11lld conflicts %11lld propagations %8.0f conflicts/sec %8.0f propagations/sec %11lld vivi props\n",
             totalconf, totalprop, (double)totalconf / cpu_time, (double) totalprop / cpu_time);
 
 
