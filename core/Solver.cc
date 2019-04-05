@@ -1182,7 +1182,7 @@ lbool Solver::vivifyDB() {
 			vivify(ref, vivCl);
 			assert(decisionLevel() == 0);
 			if (vivCl.size() == 1) {
-				if (!enqueue(vivCl[0], ref))
+				if (!enqueue(vivCl[0]))
 					return l_False;
 				nbUn++;
 			} else if (vivCl.size() == 0) {
