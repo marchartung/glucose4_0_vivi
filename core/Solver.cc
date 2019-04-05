@@ -1399,7 +1399,7 @@ lbool Solver::vivifyDB()
    {
       Clause& c = ca[learnts[i]];
       assert(c.size() > 1);
-      if (!c.isVivified() && c.size() < 30 && c.lbd() < 4)
+      if (!c.isVivified() && !c.getOneWatched() && c.size() < 30 && c.lbd() < 4)
       {
          c.setVivified(true);
          vivify(learnts[i], vivCl);
@@ -1413,7 +1413,7 @@ lbool Solver::vivifyDB()
          else
             if (vivCl.size() == 0)
             {
-               removeClause(learnts[i]);
+               removeClause(learnts[i],false);
                learnts[i] = learnts.last();
                learnts.pop();
             }
