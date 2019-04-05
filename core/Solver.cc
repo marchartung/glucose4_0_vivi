@@ -1628,12 +1628,6 @@ lbool Solver::solve_(bool do_simp, bool turn_off_simp) // Parameters are useless
 		printf(
 				"c =========================================================================================================\n");
 
-	if (certifiedUNSAT) {  // Want certified output
-		if (status == l_False)
-			fprintf(certifiedOutput, "0\n");
-		fclose(certifiedOutput);
-	}
-
 	if (status == l_True) {
 		// Extend & copy model:
 		model.growTo(nVars());
