@@ -1179,20 +1179,22 @@ lbool Solver::vivifyDB() {
 	assert(limit <= learnts.size());
 	vec<Lit> vivCl;
 	for (int i = learnts.size() - 1; i >= limit; --i) {
-		Clause& c = ca[learnts[i]];
+		CRef cr = learnts[i];
+		Clause& c = ca[cr];
 		assert(c.size() > 1);
 		if (!c.isVivified() && !c.getOneWatched()
 				&& c.size() < lbSizeMinimizingClause
 				&& c.lbd() < lbLBDMinimizingClause) {
 			c.setVivified(true);
-			vivify(learnts[i], vivCl);
+			vivify(cr, vivCl);
+			assert(ca[cr].lbd() == ca[learnts[i]].lbd());
 			assert(decisionLevel() == 0);
 			if (vivCl.size() == 1) {
-				if (!enqueue(vivCl[0], learnts[i]))
+				if (!enqueue(vivCl[0], cr))
 					return l_False;
 				nbUn++;
 			} else if (vivCl.size() == 0) {
-				removeClause(learnts[i], false);
+				removeClause(cr, false);
 				learnts[i] = learnts.last();
 				learnts.pop();
 			} else if (c.size() > vivCl.size()) {
