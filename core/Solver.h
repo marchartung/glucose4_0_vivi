@@ -97,7 +97,7 @@ public:
 
     // Solving:
     //
-    bool    simplify     ();                        // Removes already satisfied clauses.
+    bool    simplify     (const bool inSearch = false);                        // Removes already satisfied clauses.
     bool    solve        (const vec<Lit>& assumps); // Search for a model that respects a given set of assumptions.
     lbool   solveLimited (const vec<Lit>& assumps); // Search for a model that respects a given set of assumptions (With resource constraints).
     bool    solve        ();                        // Search without assumptions.

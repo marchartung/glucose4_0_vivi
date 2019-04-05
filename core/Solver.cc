@@ -75,6 +75,7 @@ static IntOption opt_first_reduce_db(_cred, "firstReduceDB", "The number of conf
 static IntOption opt_inc_reduce_db(_cred, "incReduceDB", "Increment for reduce DB", 300, IntRange(0, INT32_MAX));
 static IntOption opt_spec_inc_reduce_db(_cred, "specialIncReduceDB", "Special increment for reduce DB", 1000, IntRange(0, INT32_MAX));
 static IntOption opt_lb_lbd_frozen_clause(_cred, "minLBDFrozenClause", "Protect clauses if their LBD decrease and is lower than (for one turn)", 30, IntRange(0, INT32_MAX));
+static BoolOption opt_vivification(_cat, "vivi", "Use vivification before reduce", true);
 
 static IntOption opt_lb_size_minimzing_clause(_cm, "minSizeMinimizingClause", "The min size required to minimize clause", 30, IntRange(3, INT32_MAX));
 static IntOption opt_lb_lbd_minimzing_clause(_cm, "minLBDMinimizingClause", "The min LBD required to minimize clause", 6, IntRange(3, INT32_MAX));
@@ -1522,7 +1523,7 @@ void Solver::rebuildOrderHeap()
  |    Simplify the clause database according to the current top-level assigment. Currently, the only
  |    thing done here is the removal of satisfied clauses, but more things can be put here.
  |________________________________________________________________________________________________@*/
-bool Solver::simplify()
+bool Solver::simplify(const bool inSearch)
 {
    assert(decisionLevel() == 0);
 
@@ -1541,7 +1542,8 @@ bool Solver::simplify()
       return true;
 
    // Remove satisfied clauses:
-   removeSatisfied(learnts);
+   if(!inSearch || !opt_vivification)
+	   removeSatisfied(learnts);
    removeSatisfied(unaryWatchedClauses);
    if (remove_satisfied)  // Can be turned off.
       removeSatisfied(clauses);
@@ -1683,7 +1685,7 @@ lbool Solver::search(int nof_conflicts)
             if (incremental)  // DO NOT BACKTRACK UNTIL 0.. USELESS
                bt = (decisionLevel() < assumptions.size()) ? decisionLevel() : assumptions.size();
             cancelUntil(bt);
-            if (!vivi_was_fired && conflicts >= ((unsigned int) curRestart * nbclausesbeforereduce) && learnts.size() > 0)
+            if (opt_vivification && !vivi_was_fired && conflicts >= ((unsigned int) curRestart * nbclausesbeforereduce) && learnts.size() > 0)
             {
                vivi_was_fired = true;
                return vivifyDB();
@@ -1692,7 +1694,7 @@ lbool Solver::search(int nof_conflicts)
          }
 
          // Simplify the set of problem clauses:
-         if (decisionLevel() == 0 && !simplify())
+         if (decisionLevel() == 0 && !simplify(true))
          {
             return l_False;
          }
@@ -1700,7 +1702,7 @@ lbool Solver::search(int nof_conflicts)
          if (conflicts >= ((unsigned int) curRestart * nbclausesbeforereduce))
          {
 
-            if (learnts.size() > 0 && vivi_was_fired)
+            if (learnts.size() > 0 && (!opt_vivification || vivi_was_fired))
             {
                vivi_was_fired = false;
                curRestart = (conflicts / nbclausesbeforereduce) + 1;
