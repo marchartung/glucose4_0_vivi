@@ -94,6 +94,8 @@ static IntOption opt_lb_lbd_minimzing_clause(_cm, "minLBDMinimizingClause",
 		"The min LBD required to minimize clause", 6, IntRange(3, INT32_MAX));
 static BoolOption opt_vivification(_cm, "vivi",
 		"Use vivification before reduce", true);
+static BoolOption opt_dyn_vivification(_cm, "dyn-vivi",
+		"Use dynamic vivification approach", true);
 
 static DoubleOption opt_var_decay(_cat, "var-decay",
 		"The variable activity decay factor (starting point)", 0.8,
@@ -140,7 +142,7 @@ Solver::Solver() :
 				opt_random_var_freq), random_seed(opt_random_seed), ccmin_mode(
 				opt_ccmin_mode), phase_saving(opt_phase_saving), rnd_pol(false), rnd_init_act(
 				opt_rnd_init_act), garbage_frac(opt_garbage_frac), certifiedOutput(
-				NULL), certifiedUNSAT(false) // Not in the first parallel version
+		NULL), certifiedUNSAT(false) // Not in the first parallel version
 				, panicModeLastRemoved(0), panicModeLastRemovedShared(0), useUnaryWatched(
 				false), promoteOneWatchedClause(true)
 // Statistics: (formerly in 'SolverStats')
@@ -170,6 +172,10 @@ Solver::Solver() :
 	// Kept here for simplicity
 	lbdQueue.initSize(sizeLBDQueue);
 	trailQueue.initSize(sizeTrailQueue);
+
+	vivEfficiencySum = 0.0;
+	numSuccVivs = 0;
+	numFailVivs = 0;
 	sumLBD = 0;
 	nbclausesbeforereduce = firstReduceDB;
 }
@@ -189,7 +195,7 @@ Solver::Solver(const Solver &s) :
 				s.random_var_freq), random_seed(s.random_seed), ccmin_mode(
 				s.ccmin_mode), phase_saving(s.phase_saving), rnd_pol(s.rnd_pol), rnd_init_act(
 				s.rnd_init_act), garbage_frac(s.garbage_frac), certifiedOutput(
-				NULL), certifiedUNSAT(false) // Not in the first parallel version
+		NULL), certifiedUNSAT(false) // Not in the first parallel version
 				, panicModeLastRemoved(s.panicModeLastRemoved), panicModeLastRemovedShared(
 				s.panicModeLastRemovedShared), useUnaryWatched(
 				s.useUnaryWatched), promoteOneWatchedClause(
@@ -203,9 +209,10 @@ Solver::Solver(const Solver &s) :
 				s.nbReducedClauses), nbDL2(s.nbDL2), nbBin(s.nbBin), nbUn(
 				s.nbUn), nbReduceDB(s.nbReduceDB), solves(s.solves), starts(
 				s.starts), decisions(s.decisions), rnd_decisions(
-				s.rnd_decisions), propagations(s.propagations), viviPropagations(s.viviPropagations), conflicts(
-				s.conflicts), conflictsRestarts(s.conflictsRestarts), nbstopsrestarts(
-				s.nbstopsrestarts), nbstopsrestartssame(s.nbstopsrestartssame), lastblockatrestart(
+				s.rnd_decisions), propagations(s.propagations), viviPropagations(
+				s.viviPropagations), conflicts(s.conflicts), conflictsRestarts(
+				s.conflictsRestarts), nbstopsrestarts(s.nbstopsrestarts), nbstopsrestartssame(
+				s.nbstopsrestartssame), lastblockatrestart(
 				s.lastblockatrestart), dec_vars(s.dec_vars), clauses_literals(
 				s.clauses_literals), learnts_literals(s.learnts_literals), max_literals(
 				s.max_literals), tot_literals(s.tot_literals), curRestart(
@@ -1155,9 +1162,16 @@ void Solver::vivify(const CRef cr, vec<Lit> & out) {
 			break;
 		}
 	}
-	if(i == c.size() && out.size() == 0)
+	if (i == c.size() && out.size() == 0)
 		ok = false;
 	cancelUntil(0);
+}
+bool Solver::hasViviBudget(const uint64_t startProps) const {
+	uint64_t succVivs = (numSuccVivs==0) ? 1 : numSuccVivs;
+	return (propagations - startProps + viviPropagations)
+			< propagations
+					* (((double)vivEfficiencySum / succVivs) * (double)succVivs
+							/ (succVivs + numFailVivs) + 0.01);
 }
 
 lbool Solver::vivifyDB() {
@@ -1178,15 +1192,24 @@ lbool Solver::vivifyDB() {
 		if (!ca[ref].isVivified() && !ca[ref].getOneWatched()
 				&& ca[ref].size() < lbSizeMinimizingClause
 				&& ca[ref].lbd() < lbLBDMinimizingClause && !locked(ca[ref])) {
+			if (opt_dyn_vivification && !hasViviBudget(numStartProps))
+				break;
 			ca[ref].setVivified(true);
 			vivify(ref, vivCl);
+			if (ca[ref].size() > vivCl.size()) {
+				++numSuccVivs;
+				vivEfficiencySum += (double) (ca[ref].size() - vivCl.size())
+						/ ca[ref].size();
+			} else
+				++numFailVivs;
 			assert(decisionLevel() == 0);
 			if (vivCl.size() == 1) {
 				if (!enqueue(vivCl[0]))
 					return l_False;
 				nbUn++;
 			} else if (vivCl.size() == 0) {
-				if(!ok) return l_False;
+				if (!ok)
+					return l_False;
 				removeClause(ref, false);
 				learnts[i] = learnts.last();
 				learnts.pop();
@@ -1194,7 +1217,8 @@ lbool Solver::vivifyDB() {
 				assert(vivCl.size() > 1);
 				CRef cr = ca.alloc(vivCl, true);
 				Clause & newC = ca[cr];
-				newC.setLBD(std::min(ca[ref].lbd(), (unsigned) vivCl.size() - 1));
+				newC.setLBD(
+						std::min(ca[ref].lbd(), (unsigned) vivCl.size() - 1));
 				newC.setOneWatched(false);
 				newC.setSizeWithoutSelectors(vivCl.size());
 				newC.setVivified(true);
@@ -1469,8 +1493,7 @@ lbool Solver::search(int nof_conflicts) {
 			if (conflicts
 					>= ((unsigned int) curRestart * nbclausesbeforereduce)) {
 
-				if (learnts.size() > 0
-						&& (vivi_was_fired)) {
+				if (learnts.size() > 0 && (vivi_was_fired)) {
 					vivi_was_fired = false;
 					curRestart = (conflicts / nbclausesbeforereduce) + 1;
 					reduceDB();
