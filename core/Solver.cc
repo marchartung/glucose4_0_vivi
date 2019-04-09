@@ -1188,7 +1188,7 @@ void Solver::vivify(const CRef cr, vec<Lit> & out) {
 				prop = propagate(cr);
 			}
 			out.push(c[i]);
-			if (prop != CRef_Undef)
+			if (prop == CRef_Undef)
 			{
 				out.clear();
 				collectConflictDecisions(prop,out);
