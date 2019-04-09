@@ -1231,7 +1231,7 @@ lbool Solver::vivifyDB() {
 		assert(ca[ref].size() > 1);
 		if (!ca[ref].isVivified() && !ca[ref].getOneWatched()
 				&& ca[ref].size() < lbSizeMinimizingClause
-				&& ca[ref].lbd() < lbLBDMinimizingClause && !locked(ca[ref])) {
+				&& ca[ref].lbd() < lbLBDMinimizingClause && !locked(ca[ref]) && static_cast<unsigned>(ca[ref].size()) > ca[ref].lbd()+1) {
 			if (opt_dyn_vivification && !hasViviBudget(numStartProps))
 				break;
 			ca[ref].setVivified(true);
