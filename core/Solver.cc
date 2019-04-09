@@ -1221,7 +1221,7 @@ lbool Solver::vivifyDB() {
 	int limit = learnts.size() / 2;
 	uint64_t numStartProps = propagations;
 	sort(learnts, reduceDB_lt(ca));
-
+	sort(&(learnts[limit]), learnts.size()-limit, vivifyDB_lt(ca));
 	//find better part of clauses:
 
 	assert(limit <= learnts.size());

@@ -734,6 +734,21 @@ struct reduceDB_lt {
 		//return ca[x].size() > 2 && (ca[y].size() == 2 || ca[x].activity() < ca[y].activity()); }
 	}
 };
+struct vivifyDB_lt {
+	ClauseAllocator& ca;
+
+	vivifyDB_lt(ClauseAllocator& ca_) :
+			ca(ca_) {
+	}
+
+	bool operator()(CRef x, CRef y) {
+
+		//return ca[x].activity() < ca[y].activity();
+		return ca[x].size() < ca[y].size();
+
+		//return ca[x].size() > 2 && (ca[y].size() == 2 || ca[x].activity() < ca[y].activity()); }
+	}
+};
 
 }
 
