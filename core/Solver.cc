@@ -885,7 +885,7 @@ void Solver::collectConflictDecisions(const CRef confl,vec<Lit> & out)
 	      Var x = var(trail[i]);
 	      if (seen[x])
 	      {
-	         if (reason(x) != CRef_Undef)
+	         if (reason(x) == CRef_Undef)
 	         {
 	            assert(level(x) > 0);
 	            out.push(~trail[i]);
@@ -1188,7 +1188,7 @@ void Solver::vivify(const CRef cr, vec<Lit> & out) {
 				prop = propagate(cr);
 			}
 			out.push(c[i]);
-			if (prop == CRef_Undef)
+			if (prop != CRef_Undef)
 			{
 				out.clear();
 				collectConflictDecisions(prop,out);
