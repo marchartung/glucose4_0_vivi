@@ -388,6 +388,7 @@ protected:
 	bool hasViviBudget(const uint64_t startProps) const;
 	void removeSatisfied(vec<CRef>& cs); // Shrink 'cs' to contain only non-satisfied clauses.
 	void rebuildOrderHeap();
+	void collectConflictDecisions(const CRef confl,vec<Lit> & out);
 
 	// Maintaining Variable/Clause activity:
 	//

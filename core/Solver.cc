@@ -871,6 +871,42 @@ bool Solver::litRedundant(Lit p, uint32_t abstract_levels) {
 	return true;
 }
 
+void Solver::collectConflictDecisions(const CRef confl,vec<Lit> & out)
+{
+
+	if (decisionLevel() == 0)
+		return;
+	   const Clause & conflC = ca[confl];
+	   for (int i = 0; i < conflC.size(); ++i)
+	      seen[var(conflC[i])] = 1;
+
+	   for (int i = trail.size() - 1; i >= trail_lim[0]; i--)
+	   {
+	      Var x = var(trail[i]);
+	      if (seen[x])
+	      {
+	         if (reason(x) != CRef_Undef)
+	         {
+	            assert(level(x) > 0);
+	            out.push(~trail[i]);
+	         } else
+	         {
+	            const Clause& c = ca[reason(x)];
+	            for (int j = 0; j < c.size(); j++)
+	            {
+	               assert(value(c[j]) != l_Undef);
+	               if (level(var(c[j])) > 0)
+	                  seen[var(c[j])] = 1;
+	            }
+	         }
+	         seen[x] = 0;
+	      }
+	   }
+	   for (int i = 0; i < conflC.size(); ++i)
+	      seen[var(conflC[i])] = 0;
+	   for (int i = 0; i < seen.size(); ++i)
+	      assert(seen[i] == 0);
+}
 /*_________________________________________________________________________________________________
  |
  |  analyzeFinal : (p : Lit)  ->  [void]
@@ -1153,7 +1189,11 @@ void Solver::vivify(const CRef cr, vec<Lit> & out) {
 			}
 			out.push(c[i]);
 			if (prop != CRef_Undef)
+			{
+				out.clear();
+				collectConflictDecisions(prop,out);
 				break;
+			}
 		} else if (value(c[i]) == l_True) {
 			if (level(var(c[i])) > 0)
 				out.push(c[i]);
