@@ -107,19 +107,6 @@ void ClausesBuffer::setNbThreads(int _nbThreads) {
 uint32_t ClausesBuffer::getCap() {
     return elems.capacity();
 }
-inline unsigned int ClausesBuffer::nextIndex(unsigned int i) {
-    i++;
-    if (i == maxsize)
-	return 0;
-    return i;
-}
-
-inline unsigned int ClausesBuffer::addIndex(unsigned int i, unsigned int a) {
-    i += a;
-    if (i >= maxsize)
-	return i - maxsize;
-    return i;
-}
 
 void ClausesBuffer::removeLastClause() {
     assert(queuesize > 0);
@@ -146,40 +133,6 @@ void ClausesBuffer::removeLastClause() {
 
 }
 
-
-// Pushes a single uint to the fifo
-inline void ClausesBuffer::noCheckPush(uint32_t x) {
-    elems[first] = x;
-    first = nextIndex(first);
-}
-
-// Pops a single uint from the fifo
-inline uint32_t ClausesBuffer::noCheckPop(uint32_t & index) {
-    index = nextIndex(index);
-    uint32_t ret = elems[index];
-    return ret;
-}
-
-
-// Return true if the clause was succesfully added
-bool ClausesBuffer::pushClause(int threadId, Clause & c) {
-    if (!whenFullRemoveOlder && (queuesize + c.size() + headerSize >= maxsize))
-	return false; // We need to remove some old clauses
-    while (queuesize + c.size() + headerSize >= maxsize) { // We need to remove some old clauses
-	forcedRemovedClauses ++;
-	removeLastClause();
-	assert(queuesize > 0);
-    }
-    noCheckPush(c.size());
-    noCheckPush(c.lbd());
-    noCheckPush(nbThreads>1?nbThreads-1:1);
-    noCheckPush(threadId);
-    for(int i=0;i<c.size();i++)
-	noCheckPush(toInt(c[i]));
-    queuesize += c.size()+headerSize;
-    return true;
-    //  printf(" -> (%d, %d)\n", first, last);
-}
 
 bool ClausesBuffer::getClause(int threadId, int & threadOrigin, vec<Lit> & resultClause, unsigned & lbd, bool firstFound) {
     assert(lastOfThread.size() > threadId);

@@ -93,7 +93,7 @@ static IntOption opt_lb_size_minimzing_clause(_cm, "minSizeMinimizingClause",
 static IntOption opt_lb_lbd_minimzing_clause(_cm, "minLBDMinimizingClause",
 		"The min LBD required to minimize clause", 6, IntRange(3, INT32_MAX));
 static BoolOption opt_vivification(_cm, "vivi",
-		"Use vivification before reduce", true);
+		"Use vivification before reduce", false);
 static BoolOption opt_dyn_vivification(_cm, "dyn-vivi",
 		"Use dynamic vivification approach", false);
 
@@ -1174,38 +1174,10 @@ CRef Solver::propagateUnaryWatches(Lit p) {
 }
 
 void Solver::vivify(const CRef cr, vec<Lit> & out) {
-	assert(decisionLevel() == 0);
 	const Clause & c = ca[cr];
-	out.clear();
-	CRef prop = CRef_Undef;
-	int i = 0;
-	for (; i < c.size(); ++i) {
-		if (value(c[i]) == l_Undef) {
-			if (i != c.size() - 1) {
-				assert(prop == CRef_Undef);
-				newDecisionLevel();
-				uncheckedEnqueue(~c[i]);
-				prop = propagate(cr);
-			}
-			out.push(c[i]);
-			if (prop != CRef_Undef)
-			{
-				out.clear();
-				collectConflictDecisions(prop,out);
-				break;
-			}
-		} else if (value(c[i]) == l_True) {
-			if (level(var(c[i])) > 0)
-				out.push(c[i]);
-			else
-				out.clear();
-			break;
-		}
-	}
-	if (i == c.size() && out.size() == 0)
-		ok = false;
-	cancelUntil(0);
+	vivify(cr,c,out);
 }
+
 bool Solver::hasViviBudget(const uint64_t startProps) const {
 	uint64_t succVivs = (numSuccVivs==0) ? 1 : numSuccVivs;
 	return (propagations - startProps + viviPropagations)
@@ -1256,7 +1228,7 @@ lbool Solver::vivifyDB() {
 			} else if (ca[ref].size() > vivCl.size()) {
 				assert(vivCl.size() > 1);
 				CRef cr = ca.alloc(vivCl, true);
-				Clause & newC = ca[cr];
+				Clause & newC = ca[cr]; //TODO use implace constructor
 				newC.setLBD(
 						std::min(ca[ref].lbd(), (unsigned) vivCl.size() - 1));
 				newC.setOneWatched(false);
@@ -1371,8 +1343,7 @@ bool Solver::simplify(const bool inSearch) {
 		return true;
 
 	// Remove satisfied clauses:
-	if (!inSearch || !opt_vivification)
-		removeSatisfied(learnts);
+	removeSatisfied(learnts);
 	removeSatisfied(unaryWatchedClauses);
 	if (remove_satisfied)  // Can be turned off.
 		removeSatisfied(clauses);
@@ -1412,6 +1383,9 @@ lbool Solver::search(int nof_conflicts) {
 
 			if (parallelImportClauses())
 				return l_False;
+			lbool result = exportViviClauses(true);
+			if( result != l_Undef)
+				return result;
 
 		}
 		CRef confl = propagate();
@@ -1520,7 +1494,7 @@ lbool Solver::search(int nof_conflicts) {
 						&& learnts.size() > 0) {
 					vivi_was_fired = true;
 
-					return (opt_vivification) ? vivifyDB() : l_Undef;
+					return (opt_vivification || opt_dyn_vivification) ? vivifyDB() : l_Undef;
 				}
 				return l_Undef;
 			}
@@ -1876,6 +1850,10 @@ void Solver::parallelExportClauseDuringSearch(Clause &c) {
 bool Solver::parallelJobIsFinished() {
 	// Parallel: another job has finished let's quit
 	return false;
+}
+lbool Solver::exportViviClauses(const bool doViv) {
+	// Parallel: another job has finished let's quit
+	return l_Undef;
 }
 
 void Solver::parallelImportClauseDuringConflictAnalysis(Clause &c, CRef confl) {

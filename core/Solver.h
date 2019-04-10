@@ -223,6 +223,7 @@ public:
 	virtual void parallelExportClauseDuringSearch(Clause &c);
 	virtual bool parallelJobIsFinished();
 	virtual bool panicModeIsEnabled();
+	virtual lbool exportViviClauses(const bool doViv);
 
 	// Statistics: (read-only member variable)
 	uint64_t nbPromoted;  // Number of clauses from unary to binary watch scheme
@@ -408,6 +409,41 @@ protected:
 	bool locked(const Clause& c) const; // Returns TRUE if a clause is a reason for some implication in the current state.
 	bool satisfied(const Clause& c) const; // Returns TRUE if a clause is satisfied in the current state.
 	void vivify(const CRef cr, vec<Lit> & out);
+
+	template<typename VecType>
+	void vivify(const CRef cr, const VecType & c, vec<Lit> & out)
+	{
+		assert(decisionLevel() == 0);
+		out.clear();
+		CRef prop = CRef_Undef;
+		int i = 0;
+		for (; i < c.size(); ++i) {
+			if (value(c[i]) == l_Undef) {
+				if (i != c.size() - 1) {
+					assert(prop == CRef_Undef);
+					newDecisionLevel();
+					uncheckedEnqueue(~c[i]);
+					prop = propagate(cr);
+				}
+				out.push(c[i]);
+				if (prop != CRef_Undef)
+				{
+					out.clear();
+					collectConflictDecisions(prop,out);
+					break;
+				}
+			} else if (value(c[i]) == l_True) {
+				if (level(var(c[i])) > 0)
+					out.push(c[i]);
+				else
+					out.clear();
+				break;
+			}
+		}
+		if (i == c.size() && out.size() == 0)
+			ok = false;
+		cancelUntil(0);
+	}
 
 	unsigned int computeLBD(const vec<Lit> & lits, int end = -1);
 	unsigned int computeLBD(const Clause &c);

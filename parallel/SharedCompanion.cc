@@ -119,17 +119,6 @@ Lit SharedCompanion::getUnary(ParallelSolver *s) {
 
 // Specialized functions for this companion
 // must be multithread safe
-// Add a clause to the threads-wide clause database (all clauses, through)
-bool SharedCompanion::addLearnt(ParallelSolver *s, Clause & c) { 
-  int sn = s->thn; // thread number of the solver
-  bool ret = false;
-  assert(watchedSolvers.size()>sn);
-
-  pthread_mutex_lock(&mutexSharedClauseCompanion);
-  ret = clausesBuffer.pushClause(sn, c);
-  pthread_mutex_unlock(&mutexSharedClauseCompanion);
-  return ret;
-}
 
 
 bool SharedCompanion::getNewClause(ParallelSolver *s, int & threadOrigin, vec<Lit>& newclause, unsigned & lbd) { // gets a new interesting clause for solver s
