@@ -95,7 +95,7 @@ static IntOption opt_lb_lbd_minimzing_clause(_cm, "minLBDMinimizingClause",
 static BoolOption opt_vivification(_cm, "vivi",
 		"Use vivification before reduce", true);
 static BoolOption opt_dyn_vivification(_cm, "dyn-vivi",
-		"Use dynamic vivification approach", true);
+		"Use dynamic vivification approach", false);
 
 static DoubleOption opt_var_decay(_cat, "var-decay",
 		"The variable activity decay factor (starting point)", 0.8,
@@ -1221,7 +1221,7 @@ lbool Solver::vivifyDB() {
 	int limit = learnts.size() / 2;
 	uint64_t numStartProps = propagations;
 	sort(learnts, reduceDB_lt(ca));
-	sort(&(learnts[limit]), learnts.size()-limit, vivifyDB_lt(ca));
+	//sort(&(learnts[limit]), learnts.size()-limit, vivifyDB_lt(ca));
 	//find better part of clauses:
 
 	assert(limit <= learnts.size());
@@ -1231,7 +1231,7 @@ lbool Solver::vivifyDB() {
 		assert(ca[ref].size() > 1);
 		if (!ca[ref].isVivified() && !ca[ref].getOneWatched()
 				&& ca[ref].size() < lbSizeMinimizingClause
-				&& ca[ref].lbd() < lbLBDMinimizingClause && !locked(ca[ref]) && static_cast<unsigned>(ca[ref].size()) > ca[ref].lbd()+1) {
+				&& ca[ref].lbd() < lbLBDMinimizingClause && !locked(ca[ref])) {
 			if (opt_dyn_vivification && !hasViviBudget(numStartProps))
 				break;
 			ca[ref].setVivified(true);
