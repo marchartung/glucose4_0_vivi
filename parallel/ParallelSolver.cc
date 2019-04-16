@@ -186,7 +186,38 @@ void ParallelSolver::reduceDB() {
 			if (!c.canBeDel())
 				limit++;  //we keep c, so we can delete an other clause
 			c.setCanBeDel(true);  // At the next step, c can be delete
-			learnts[j++] = learnts[i];
+			if (c.hasClauseLink() && c.getClauseLink(-1).isVivified()
+					&& !locked(c)) {
+				if (c.getClauseLink(-1).getVivifiedClause().size() > 1) {
+					const vec<Lit> & vivCl =
+							c.getClauseLink(-1).getVivifiedClause();
+					CRef cr = ca.alloc(vivCl, true);
+					Clause & newC = ca[cr]; //TODO use implace constructor
+					newC.setLBD(std::min(c.lbd(), (unsigned) vivCl.size() - 1));
+					newC.setOneWatched(false);
+					newC.setSizeWithoutSelectors(vivCl.size());
+					newC.setVivified(true);
+					newC.setCanBeDel(c.canBeDel());
+					newC.setExported(c.getExported());
+					newC.activity() = c.activity();
+					newC.mark(c.mark());
+					newC.setSeen(c.getSeen());
+					assert(!c.getOneWatched());
+					removeClause(learnts[i], false);
+					learnts[j++] = cr;
+					attachClause(cr);
+					std::cout << "imported vivification\n";
+				} else if (c.getClauseLink(-1).getVivifiedClause().size()
+						== 1) {
+					if (!enqueue(c.getClauseLink(-1).getVivifiedClause()[0])) {
+						ok = false;
+						return;
+					}
+					removeClause(learnts[i]);
+				}
+			} else
+				learnts[j++] = learnts[i];
+
 		}
 	}
 	learnts.shrink(i - j);
@@ -215,7 +246,44 @@ void ParallelSolver::reduceDB() {
 				if (!c.canBeDel())
 					limit++;  //we keep c, so we can delete an other clause
 				c.setCanBeDel(true);  // At the next step, c can be delete
-				unaryWatchedClauses[j++] = unaryWatchedClauses[i];
+				if (c.hasClauseLink() && c.getClauseLink(-1).isVivified()
+						&& !locked(c)) {
+					if (!c.getClauseLink(-1).isTrue()
+							&& c.getClauseLink(-1).getVivifiedClause().size()
+									> 1) {
+						const vec<Lit> & vivCl =
+								c.getClauseLink(-1).getVivifiedClause();
+						CRef cr = ca.alloc(vivCl, true);
+						Clause & newC = ca[cr]; //TODO use implace constructor
+						newC.setLBD(
+								std::min(c.lbd(), (unsigned) vivCl.size() - 1));
+						newC.setOneWatched(c.getOneWatched());
+						newC.setSizeWithoutSelectors(vivCl.size());
+						newC.setVivified(true);
+						newC.setCanBeDel(c.canBeDel());
+						newC.setExported(c.getExported());
+						newC.activity() = c.activity();
+						newC.mark(c.mark());
+						newC.setSeen(c.getSeen());
+						removeClause(unaryWatchedClauses[i], c.getOneWatched());
+						unaryWatchedClauses[j++] = cr;
+						if (newC.getOneWatched())
+							attachClausePurgatory(cr);
+						else
+							attachClause(cr);
+						std::cout << "imported vivification\n";
+					} else if (!c.getClauseLink(-1).isTrue()
+							&& c.getClauseLink(-1).getVivifiedClause().size()
+									== 1) {
+						if (!enqueue(
+								c.getClauseLink(-1).getVivifiedClause()[0])) {
+							ok = false;
+							return;
+						}
+						removeClause(unaryWatchedClauses[i]);
+					}
+				} else
+					unaryWatchedClauses[j++] = unaryWatchedClauses[i];
 			}
 		}
 		unaryWatchedClauses.shrink(i - j);
@@ -298,6 +366,11 @@ bool ParallelSolver::shareClause(const CRef & cref) {
 			exportViviClauses(false);
 		return true;
 	} else {
+		if (ca[cref].size() < lbSizeMinimizingClause
+				&& ca[cref].lbd() < lbLBDMinimizingClause) {
+			assert(!ca[cref].hasClauseLink());
+			ca[cref].getClauseLink(sharedcomp->nbThreads);
+		}
 		bool sent = sharedcomp->addLearnt(this, ca[cref], thn);
 		if (sent)
 			nbexported++;
@@ -383,8 +456,9 @@ bool ParallelSolver::parallelImportClauses() {
 	assert(decisionLevel() == 0);
 	int importedFromThread;
 	unsigned lbd;
+	ClauseLink * l;
 	while (sharedcomp->getNewClause(this, importedFromThread, importedClause,
-			lbd)) {
+			lbd, l)) {
 		assert(importedFromThread <= sharedcomp->nbThreads);
 		assert(importedFromThread >= 0);
 
@@ -395,6 +469,10 @@ bool ParallelSolver::parallelImportClauses() {
 
 		//printf("Thread %d imports clause from thread %d\n", threadNumber(), importedFromThread);
 		CRef cr = ca.alloc(importedClause, true, true);
+		if (l != NULL)
+			ca[cr].setClauseLink(l);
+		else
+			ca[cr].setVivified(true);
 		ca[cr].setLBD(importedClause.size());
 		if (plingeling
 				|| (lbd <= directlyTwoWatchedLbd

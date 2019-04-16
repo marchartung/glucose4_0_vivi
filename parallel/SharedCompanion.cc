@@ -121,12 +121,12 @@ Lit SharedCompanion::getUnary(ParallelSolver *s) {
 // must be multithread safe
 
 
-bool SharedCompanion::getNewClause(ParallelSolver *s, int & threadOrigin, vec<Lit>& newclause, unsigned & lbd) { // gets a new interesting clause for solver s
+bool SharedCompanion::getNewClause(ParallelSolver *s, int & threadOrigin, vec<Lit>& newclause, unsigned & lbd, ClauseLink * & link) { // gets a new interesting clause for solver s
   int sn = s->thn;
   
     // First, let's get the clauses on the big blackboard
     pthread_mutex_lock(&mutexSharedClauseCompanion);
-    bool b = clausesBuffer.getClause(sn, threadOrigin, newclause,lbd);
+    bool b = clausesBuffer.getClause(sn, threadOrigin, newclause,lbd,link);
     pthread_mutex_unlock(&mutexSharedClauseCompanion);
  
   return b;

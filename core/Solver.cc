@@ -456,6 +456,7 @@ void Solver::removeClause(CRef cr, bool inPurgatory) {
 	if (locked(c))
 		vardata[var(c[0])].reason = CRef_Undef;
 	c.mark(1);
+	c.deref();
 	ca.free(cr);
 }
 
@@ -871,41 +872,35 @@ bool Solver::litRedundant(Lit p, uint32_t abstract_levels) {
 	return true;
 }
 
-void Solver::collectConflictDecisions(const CRef confl,vec<Lit> & out)
-{
+void Solver::collectConflictDecisions(const CRef confl, vec<Lit> & out) {
 
 	if (decisionLevel() == 0)
 		return;
-	   const Clause & conflC = ca[confl];
-	   for (int i = 0; i < conflC.size(); ++i)
-	      seen[var(conflC[i])] = 1;
+	const Clause & conflC = ca[confl];
+	for (int i = 0; i < conflC.size(); ++i)
+		seen[var(conflC[i])] = 1;
 
-	   for (int i = trail.size() - 1; i >= trail_lim[0]; i--)
-	   {
-	      Var x = var(trail[i]);
-	      if (seen[x])
-	      {
-	         if (reason(x) == CRef_Undef)
-	         {
-	            assert(level(x) > 0);
-	            out.push(~trail[i]);
-	         } else
-	         {
-	            const Clause& c = ca[reason(x)];
-	            for (int j = 0; j < c.size(); j++)
-	            {
-	               assert(value(c[j]) != l_Undef);
-	               if (level(var(c[j])) > 0)
-	                  seen[var(c[j])] = 1;
-	            }
-	         }
-	         seen[x] = 0;
-	      }
-	   }
-	   for (int i = 0; i < conflC.size(); ++i)
-	      seen[var(conflC[i])] = 0;
-	   for (int i = 0; i < seen.size(); ++i)
-	      assert(seen[i] == 0);
+	for (int i = trail.size() - 1; i >= trail_lim[0]; i--) {
+		Var x = var(trail[i]);
+		if (seen[x]) {
+			if (reason(x) == CRef_Undef) {
+				assert(level(x) > 0);
+				out.push(~trail[i]);
+			} else {
+				const Clause& c = ca[reason(x)];
+				for (int j = 0; j < c.size(); j++) {
+					assert(value(c[j]) != l_Undef);
+					if (level(var(c[j])) > 0)
+						seen[var(c[j])] = 1;
+				}
+			}
+			seen[x] = 0;
+		}
+	}
+	for (int i = 0; i < conflC.size(); ++i)
+		seen[var(conflC[i])] = 0;
+	for (int i = 0; i < seen.size(); ++i)
+		assert(seen[i] == 0);
 }
 /*_________________________________________________________________________________________________
  |
@@ -1175,15 +1170,16 @@ CRef Solver::propagateUnaryWatches(Lit p) {
 
 void Solver::vivify(const CRef cr, vec<Lit> & out) {
 	const Clause & c = ca[cr];
-	vivify(cr,c,out);
+	vivify(cr, c, out);
 }
 
 bool Solver::hasViviBudget(const uint64_t startProps) const {
-	uint64_t succVivs = (numSuccVivs==0) ? 1 : numSuccVivs;
+	uint64_t succVivs = (numSuccVivs == 0) ? 1 : numSuccVivs;
 	return (propagations - startProps + viviPropagations)
 			< propagations
-					* (((double)vivEfficiencySum / succVivs) * (double)succVivs
-							/ (succVivs + numFailVivs) + 0.01);
+					* (((double) vivEfficiencySum / succVivs)
+							* (double) succVivs / (succVivs + numFailVivs)
+							+ 0.01);
 }
 
 lbool Solver::vivifyDB() {
@@ -1203,30 +1199,51 @@ lbool Solver::vivifyDB() {
 		assert(ca[ref].size() > 1);
 		if (!ca[ref].isVivified() && !ca[ref].getOneWatched()
 				&& ca[ref].size() < lbSizeMinimizingClause
-				&& ca[ref].lbd() < lbLBDMinimizingClause && !locked(ca[ref])) {
+				&& ca[ref].lbd() < lbLBDMinimizingClause && !locked(ca[ref])
+				&& (!ca[ref].hasClauseLink()
+						|| ca[ref].getClauseLink(-1).canBeVivified())) {
 			if (opt_dyn_vivification && !hasViviBudget(numStartProps))
 				break;
+			if (ca[ref].hasClauseLink()
+					&& !ca[ref].getClauseLink(-1).lockForVivi())
+				continue;
 			ca[ref].setVivified(true);
 			vivify(ref, vivCl);
 			if (ca[ref].size() > vivCl.size()) {
 				++numSuccVivs;
 				vivEfficiencySum += (double) (ca[ref].size() - vivCl.size())
 						/ ca[ref].size();
-			} else
+			} else {
 				++numFailVivs;
+				if (ca[ref].hasClauseLink()) {
+					ca[ref].getClauseLink(-1).setFailed();
+					ca[ref].deref();
+				}
+			}
 			assert(decisionLevel() == 0);
 			if (vivCl.size() == 1) {
+
 				if (!enqueue(vivCl[0]))
 					return l_False;
+				if (ca[ref].hasClauseLink()) {
+					ca[ref].getClauseLink(-1).setVivified(vivCl);
+				}
+				removeClause(ref, false);
 				nbUn++;
 			} else if (vivCl.size() == 0) {
 				if (!ok)
 					return l_False;
+				if (ca[ref].hasClauseLink()) {
+					ca[ref].getClauseLink(-1).setVivified(vivCl);
+				}
 				removeClause(ref, false);
 				learnts[i] = learnts.last();
 				learnts.pop();
 			} else if (ca[ref].size() > vivCl.size()) {
 				assert(vivCl.size() > 1);
+				if (ca[ref].hasClauseLink()) {
+					ca[ref].getClauseLink(-1).setVivified(vivCl);
+				}
 				CRef cr = ca.alloc(vivCl, true);
 				Clause & newC = ca[cr]; //TODO use implace constructor
 				newC.setLBD(
@@ -1239,7 +1256,6 @@ lbool Solver::vivifyDB() {
 				newC.activity() = ca[ref].activity();
 				newC.mark(ca[ref].mark());
 				newC.setSeen(ca[ref].getSeen());
-
 				removeClause(learnts[i]);
 				learnts[i] = cr;
 				attachClause(cr);
@@ -1278,6 +1294,7 @@ void Solver::reduceDB() {
 
 	for (i = j = 0; i < learnts.size(); i++) {
 		Clause& c = ca[learnts[i]];
+		assert(!c.hasClauseLink());
 		if (c.lbd() > 2 && c.size() > 2 && c.canBeDel() && !locked(c)
 				&& (i < limit)) {
 			removeClause(learnts[i]);
@@ -1384,7 +1401,7 @@ lbool Solver::search(int nof_conflicts) {
 			if (parallelImportClauses())
 				return l_False;
 			lbool result = exportViviClauses(true);
-			if( result != l_Undef)
+			if (result != l_Undef)
 				return result;
 
 		}
@@ -1494,7 +1511,8 @@ lbool Solver::search(int nof_conflicts) {
 						&& learnts.size() > 0) {
 					vivi_was_fired = true;
 
-					return (opt_vivification || opt_dyn_vivification) ? vivifyDB() : l_Undef;
+					return (opt_vivification || opt_dyn_vivification) ?
+							vivifyDB() : l_Undef;
 				}
 				return l_Undef;
 			}
@@ -1511,6 +1529,8 @@ lbool Solver::search(int nof_conflicts) {
 					vivi_was_fired = false;
 					curRestart = (conflicts / nbclausesbeforereduce) + 1;
 					reduceDB();
+					if (!ok)
+						return l_False;
 					if (!panicModeIsEnabled())
 						nbclausesbeforereduce += incReduceDB;
 				}

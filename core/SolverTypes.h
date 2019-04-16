@@ -60,6 +60,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "mtl/Vec.h"
 #include "mtl/Map.h"
 #include "mtl/Alloc.h"
+#include "parallel/ClauseLink.h"
 
 
 namespace Glucose {
@@ -157,6 +158,7 @@ typedef RegionAllocator<uint32_t>::Ref CRef;
 #define BITS_REALSIZE 21
 class Clause {
     struct {
+     ClauseLink * link;
       unsigned mark       : 2;
       unsigned learnt     : 1;
       unsigned szWithoutSelectors : BITS_SIZEWITHOUTSEL;
@@ -178,6 +180,7 @@ class Clause {
     template<class V>
     Clause(const V& ps, int _extra_size, bool learnt, bool isVivi = false) {
 	assert(_extra_size < (1<<2));
+		header.link = NULL;
         header.mark      = 0;
         header.learnt    = learnt;
         header.extra_size = _extra_size;
@@ -231,6 +234,39 @@ public:
     CRef         relocation  ()      const   { return data[0].rel; }
     void         relocate    (CRef c)        { header.reloced = 1; data[0].rel = c; }
 
+    ClauseLink & getClauseLink(const unsigned numThr)
+    {
+    	if(header.link == NULL)
+    		header.link = ClauseLink::get(numThr);
+    	return *header.link;
+    }
+
+    const ClauseLink & getClauseLink() const
+    {
+    	assert(header.link != NULL);
+    	return *header.link;
+    }
+
+    void setClauseLink(ClauseLink * l)
+    {
+    	header.link = l;
+    }
+
+    void deref()
+    {
+    	if(header.link != NULL)
+    	{
+    		header.link->dereference();
+    		header.link = NULL;
+    	}
+    }
+
+
+    bool hasClauseLink() const
+    {
+    	return header.link != NULL;
+    }
+
     // NOTE: somewhat unsafe to change the clause in-place! Must manually call 'calcAbstraction' afterwards for
     //       subsumption operations to behave correctly.
     Lit&         operator [] (int i)         { return data[i].lit; }
@@ -251,7 +287,7 @@ public:
     // unsigned int&       lbd    ()              { return header.lbd; }
     unsigned int        lbd    () const        { return header.lbd; }
     void setCanBeDel(bool b) {header.canbedel = b;}
-    bool isVivified() const { return header.vivified; }
+    bool isVivified() const { return header.vivified;}
     void setVivified(const bool b) { header.vivified = b; }
     bool canBeDel() {return header.canbedel;}
     void setSeen(bool b) {header.seen = b;}
@@ -333,6 +369,7 @@ class ClauseAllocator : public RegionAllocator<uint32_t>
 	  to[cr].setSizeWithoutSelectors(c.sizeWithoutSelectors());
 	  to[cr].setCanBeDel(c.canBeDel());
 	  to[cr].setVivified(c.isVivified());
+	  to[cr].header.link = c.header.link;
 	  if (c.wasImported()) {
              to[cr].setImportedFrom(c.importedFrom());
 	  }

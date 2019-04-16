@@ -88,7 +88,7 @@ public:
 	}
 
 	bool getNewClause(ParallelSolver *s, int &th, vec<Lit> & nc,
-			unsigned & lbd); // gets a new interesting clause for solver s
+			unsigned & lbd, ClauseLink * & link); // gets a new interesting clause for solver s
 	Lit getUnary(ParallelSolver *s);                 // Gets a new unary literal
 	inline ParallelSolver* winner() {
 		return jobFinishedBy;
