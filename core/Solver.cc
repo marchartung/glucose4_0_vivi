@@ -871,41 +871,35 @@ bool Solver::litRedundant(Lit p, uint32_t abstract_levels) {
 	return true;
 }
 
-void Solver::collectConflictDecisions(const CRef confl,vec<Lit> & out)
-{
+void Solver::collectConflictDecisions(const CRef confl, vec<Lit> & out) {
 
 	if (decisionLevel() == 0)
 		return;
-	   const Clause & conflC = ca[confl];
-	   for (int i = 0; i < conflC.size(); ++i)
-	      seen[var(conflC[i])] = 1;
+	const Clause & conflC = ca[confl];
+	for (int i = 0; i < conflC.size(); ++i)
+		seen[var(conflC[i])] = 1;
 
-	   for (int i = trail.size() - 1; i >= trail_lim[0]; i--)
-	   {
-	      Var x = var(trail[i]);
-	      if (seen[x])
-	      {
-	         if (reason(x) == CRef_Undef)
-	         {
-	            assert(level(x) > 0);
-	            out.push(~trail[i]);
-	         } else
-	         {
-	            const Clause& c = ca[reason(x)];
-	            for (int j = 0; j < c.size(); j++)
-	            {
-	               assert(value(c[j]) != l_Undef);
-	               if (level(var(c[j])) > 0)
-	                  seen[var(c[j])] = 1;
-	            }
-	         }
-	         seen[x] = 0;
-	      }
-	   }
-	   for (int i = 0; i < conflC.size(); ++i)
-	      seen[var(conflC[i])] = 0;
-	   for (int i = 0; i < seen.size(); ++i)
-	      assert(seen[i] == 0);
+	for (int i = trail.size() - 1; i >= trail_lim[0]; i--) {
+		Var x = var(trail[i]);
+		if (seen[x]) {
+			if (reason(x) == CRef_Undef) {
+				assert(level(x) > 0);
+				out.push(~trail[i]);
+			} else {
+				const Clause& c = ca[reason(x)];
+				for (int j = 0; j < c.size(); j++) {
+					assert(value(c[j]) != l_Undef);
+					if (level(var(c[j])) > 0)
+						seen[var(c[j])] = 1;
+				}
+			}
+			seen[x] = 0;
+		}
+	}
+	for (int i = 0; i < conflC.size(); ++i)
+		seen[var(conflC[i])] = 0;
+	for (int i = 0; i < seen.size(); ++i)
+		assert(seen[i] == 0);
 }
 /*_________________________________________________________________________________________________
  |
@@ -1175,15 +1169,16 @@ CRef Solver::propagateUnaryWatches(Lit p) {
 
 void Solver::vivify(const CRef cr, vec<Lit> & out) {
 	const Clause & c = ca[cr];
-	vivify(cr,c,out);
+	vivify(cr, c, out);
 }
 
 bool Solver::hasViviBudget(const uint64_t startProps) const {
-	uint64_t succVivs = (numSuccVivs==0) ? 1 : numSuccVivs;
+	uint64_t succVivs = (numSuccVivs == 0) ? 1 : numSuccVivs;
 	return (propagations - startProps + viviPropagations)
 			< propagations
-					* (((double)vivEfficiencySum / succVivs) * (double)succVivs
-							/ (succVivs + numFailVivs) + 0.01);
+					* (((double) vivEfficiencySum / succVivs)
+							* (double) succVivs / (succVivs + numFailVivs)
+							+ 0.01);
 }
 
 lbool Solver::vivifyDB() {
@@ -1193,7 +1188,8 @@ lbool Solver::vivifyDB() {
 	int limit = learnts.size() / 2;
 	uint64_t numStartProps = propagations;
 	sort(learnts, reduceDB_lt(ca));
-	//sort(&(learnts[limit]), learnts.size()-limit, vivifyDB_lt(ca));
+	if (opt_dyn_vivification)
+		sort(&(learnts[limit]), learnts.size() - limit, vivifyDB_lt(ca));
 	//find better part of clauses:
 
 	assert(limit <= learnts.size());
@@ -1384,7 +1380,7 @@ lbool Solver::search(int nof_conflicts) {
 			if (parallelImportClauses())
 				return l_False;
 			lbool result = exportViviClauses(true);
-			if( result != l_Undef)
+			if (result != l_Undef)
 				return result;
 
 		}
@@ -1494,7 +1490,8 @@ lbool Solver::search(int nof_conflicts) {
 						&& learnts.size() > 0) {
 					vivi_was_fired = true;
 
-					return (opt_vivification || opt_dyn_vivification) ? vivifyDB() : l_Undef;
+					return (opt_vivification || opt_dyn_vivification) ?
+							vivifyDB() : l_Undef;
 				}
 				return l_Undef;
 			}
