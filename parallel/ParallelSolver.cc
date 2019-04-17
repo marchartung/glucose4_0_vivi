@@ -298,7 +298,7 @@ bool ParallelSolver::shareClause(const CRef & cref) {
 			exportViviClauses(false);
 		return true;
 	} else {
-		bool sent = sharedcomp->addLearnt(this, ca[cref], thn);
+		bool sent = sharedcomp->addLearnt(this, ca[cref]);
 		if (sent)
 			nbexported++;
 		return sent;
@@ -321,7 +321,7 @@ lbool ParallelSolver::exportViviClauses(const bool doViv) {
 				sharedcomp->addLearnt(this, expC[0]);
 				exp = true;
 			} else
-				exp = sharedcomp->addLearnt(this, expC, thn);
+				exp = sharedcomp->addLearnt(this, expC);
 
 			if (exp) {
 				nbexported++;
@@ -332,7 +332,7 @@ lbool ParallelSolver::exportViviClauses(const bool doViv) {
 		viviPropagations += propagations - numStartProps;
 	} else
 		for (unsigned i = 0; i < expClauses.size(); ++i)
-			if (sharedcomp->addLearnt(this, expClauses[i].clause, thn))
+			if (sharedcomp->addLearnt(this, expClauses[i].clause))
 				nbexported++;
 
 	expClauses.clear();
@@ -380,49 +380,40 @@ void ParallelSolver::parallelImportUnaryClauses() {
 
 bool ParallelSolver::parallelImportClauses() {
 
-	assert(decisionLevel() == 0);
-	int importedFromThread;
-	unsigned lbd;
-	while (sharedcomp->getNewClause(this, importedFromThread, importedClause,
-			lbd)) {
-		assert(importedFromThread <= sharedcomp->nbThreads);
-		assert(importedFromThread >= 0);
+    assert(decisionLevel() == 0);
+    int importedFromThread;
+    while (sharedcomp->getNewClause(this, importedFromThread, importedClause)) {
+        assert(importedFromThread <= sharedcomp->nbThreads);
+        assert(importedFromThread >= 0);
 
-		assert(importedFromThread != thn);
+        assert(importedFromThread != thn);
 
-		if (importedClause.size() == 0)
-			return true;
+        if (importedClause.size() == 0)
+            return true;
 
-		//printf("Thread %d imports clause from thread %d\n", threadNumber(), importedFromThread);
-		CRef cr = ca.alloc(importedClause, true, true);
-		ca[cr].setLBD(importedClause.size());
-		if (plingeling
-				|| (lbd <= directlyTwoWatchedLbd
-						&& importedClause.size() <= directlyTwoWatchedSize)) // 0 means a broadcasted clause (good clause), 1 means a survivor clause, broadcasted
-			ca[cr].setExported(2); // A broadcasted clause (or a survivor clause) do not share it anymore
-		else {
-			ca[cr].setExported(1); // next time we see it in analyze, we share it (follow route / broadcast depending on the global strategy, part of an ongoing experimental stuff: a clause in one Watched will be set to exported 2 when promotted.
-		}
-		ca[cr].setImportedFrom(importedFromThread);
-
-		unaryWatchedClauses.push(cr);
-
-		if (plingeling || ca[cr].size() <= 2
-				|| (lbd <= directlyTwoWatchedLbd
-						&& importedClause.size() <= directlyTwoWatchedSize)) { //|| importedRoute == 0) { // importedRoute == 0 means a glue clause in another thread (or any very good clause)
-			ca[cr].setOneWatched(false); // Warning: those clauses will never be promoted by a conflict clause (or rarely: they are propagated!)
-			attachClause(cr);
-			nbImportedGoodClauses++;
-		} else {
-			ca[cr].setOneWatched(true);
-			attachClausePurgatory(cr);  //
-			nbimportedInPurgatory++;
-		}
-		assert(ca[cr].learnt());
-		nbimported++;
-
-	}
-	return false;
+        //printf("Thread %d imports clause from thread %d\n", threadNumber(), importedFromThread);
+        CRef cr = ca.alloc(importedClause, true, true);
+        ca[cr].setLBD(importedClause.size());
+        if (plingeling) // 0 means a broadcasted clause (good clause), 1 means a survivor clause, broadcasted
+            ca[cr].setExported(2); // A broadcasted clause (or a survivor clause) do not share it anymore
+        else {
+            ca[cr].setExported(1); // next time we see it in analyze, we share it (follow route / broadcast depending on the global strategy, part of an ongoing experimental stuff: a clause in one Watched will be set to exported 2 when promotted.
+        }
+        ca[cr].setImportedFrom(importedFromThread);
+        unaryWatchedClauses.push(cr);
+        if (plingeling || ca[cr].size() <= 2) {//|| importedRoute == 0) { // importedRoute == 0 means a glue clause in another thread (or any very good clause)
+            ca[cr].setOneWatched(false); // Warning: those clauses will never be promoted by a conflict clause (or rarely: they are propagated!)
+            attachClause(cr);
+            nbImportedGoodClauses++;
+        } else {
+            ca[cr].setOneWatched(true);
+            attachClausePurgatory(cr); //
+            nbimportedInPurgatory++;
+        }
+        assert(ca[cr].learnt());
+        nbimported++;
+    }
+    return false;
 }
 
 /*_________________________________________________________________________________________________
