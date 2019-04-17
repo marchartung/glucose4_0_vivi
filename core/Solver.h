@@ -779,8 +779,8 @@ struct vivifyDB_lt {
 
 	bool operator()(CRef x, CRef y) {
 
-		//return ca[x].activity() < ca[y].activity();
-		return ca[x].size() < ca[y].size();
+		return ca[x].activity() < ca[y].activity();
+		//return ca[x].size() < ca[y].size();
 
 		//return ca[x].size() > 2 && (ca[y].size() == 2 || ca[x].activity() < ca[y].activity()); }
 	}
