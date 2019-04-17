@@ -244,6 +244,11 @@ Solver::Solver(const Solver &s) :
 	sumLBD = s.sumLBD;
 	nbclausesbeforereduce = s.nbclausesbeforereduce;
 
+
+	vivEfficiencySum = s.vivEfficiencySum;
+	numSuccVivs = s.numSuccVivs;
+	numFailVivs = s.numFailVivs;
+
 	// Copy all search vectors
 	s.watches.copyTo(watches);
 	s.watchesBin.copyTo(watchesBin);
