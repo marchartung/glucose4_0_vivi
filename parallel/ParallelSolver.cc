@@ -186,37 +186,7 @@ void ParallelSolver::reduceDB() {
 			if (!c.canBeDel())
 				limit++;  //we keep c, so we can delete an other clause
 			c.setCanBeDel(true);  // At the next step, c can be delete
-			if (c.hasClauseLink() && c.getClauseLink(-1).isVivified()
-					&& !locked(c)) {
-				if (c.getClauseLink(-1).getVivifiedClause().size() > 1) {
-					const vec<Lit> & vivCl =
-							c.getClauseLink(-1).getVivifiedClause();
-					CRef cr = ca.alloc(vivCl, true);
-					Clause & newC = ca[cr]; //TODO use implace constructor
-					newC.setLBD(std::min(c.lbd(), (unsigned) vivCl.size() - 1));
-					newC.setOneWatched(false);
-					newC.setSizeWithoutSelectors(vivCl.size());
-					newC.setVivified(true);
-					newC.setCanBeDel(c.canBeDel());
-					newC.setExported(c.getExported());
-					newC.activity() = c.activity();
-					newC.mark(c.mark());
-					newC.setSeen(c.getSeen());
-					assert(!c.getOneWatched());
-					removeClause(learnts[i], false);
-					learnts[j++] = cr;
-					attachClause(cr);
-					std::cout << "imported vivification\n";
-				} else if (c.getClauseLink(-1).getVivifiedClause().size()
-						== 1) {
-					if (!enqueue(c.getClauseLink(-1).getVivifiedClause()[0])) {
-						ok = false;
-						return;
-					}
-					removeClause(learnts[i]);
-				}
-			} else
-				learnts[j++] = learnts[i];
+			learnts[j++] = learnts[i];
 
 		}
 	}
@@ -271,7 +241,6 @@ void ParallelSolver::reduceDB() {
 							attachClausePurgatory(cr);
 						else
 							attachClause(cr);
-						std::cout << "imported vivification\n";
 					} else if (!c.getClauseLink(-1).isTrue()
 							&& c.getClauseLink(-1).getVivifiedClause().size()
 									== 1) {
@@ -313,9 +282,7 @@ void ParallelSolver::parallelImportClauseDuringConflictAnalysis(Clause &c,
 		c.setExported(c.getExported() + 1);
 		if (!c.wasImported() && c.getExported() == 2) { // It's a new interesting clause:
 			if (c.lbd() == 2
-					|| (c.size() < goodlimitsize && c.lbd() <= goodlimitlbd)
-					|| (c.lbd() <= directlyTwoWatchedLbd
-							&& c.size() <= directlyTwoWatchedSize)) {
+					|| (c.size() < goodlimitsize && c.lbd() <= goodlimitlbd)) {
 				shareClause(confl);
 			}
 		}
@@ -371,7 +338,7 @@ bool ParallelSolver::shareClause(const CRef & cref) {
 			assert(!ca[cref].hasClauseLink());
 			ca[cref].getClauseLink(sharedcomp->nbThreads);
 		}
-		bool sent = sharedcomp->addLearnt(this, ca[cref], thn);
+		bool sent = sharedcomp->addLearnt(this, ca[cref]);
 		if (sent)
 			nbexported++;
 		return sent;
@@ -394,7 +361,7 @@ lbool ParallelSolver::exportViviClauses(const bool doViv) {
 				sharedcomp->addLearnt(this, expC[0]);
 				exp = true;
 			} else
-				exp = sharedcomp->addLearnt(this, expC, thn);
+				exp = sharedcomp->addLearnt(this, expC);
 
 			if (exp) {
 				nbexported++;
@@ -405,7 +372,7 @@ lbool ParallelSolver::exportViviClauses(const bool doViv) {
 		viviPropagations += propagations - numStartProps;
 	} else
 		for (unsigned i = 0; i < expClauses.size(); ++i)
-			if (sharedcomp->addLearnt(this, expClauses[i].clause, thn))
+			if (sharedcomp->addLearnt(this, expClauses[i].clause))
 				nbexported++;
 
 	expClauses.clear();
@@ -455,10 +422,8 @@ bool ParallelSolver::parallelImportClauses() {
 
 	assert(decisionLevel() == 0);
 	int importedFromThread;
-	unsigned lbd;
 	ClauseLink * l;
-	while (sharedcomp->getNewClause(this, importedFromThread, importedClause,
-			lbd, l)) {
+	while (sharedcomp->getNewClause(this, importedFromThread, importedClause, l)) {
 		assert(importedFromThread <= sharedcomp->nbThreads);
 		assert(importedFromThread >= 0);
 
@@ -474,9 +439,7 @@ bool ParallelSolver::parallelImportClauses() {
 		else
 			ca[cr].setVivified(true);
 		ca[cr].setLBD(importedClause.size());
-		if (plingeling
-				|| (lbd <= directlyTwoWatchedLbd
-						&& importedClause.size() <= directlyTwoWatchedSize)) // 0 means a broadcasted clause (good clause), 1 means a survivor clause, broadcasted
+		if (plingeling) // 0 means a broadcasted clause (good clause), 1 means a survivor clause, broadcasted
 			ca[cr].setExported(2); // A broadcasted clause (or a survivor clause) do not share it anymore
 		else {
 			ca[cr].setExported(1); // next time we see it in analyze, we share it (follow route / broadcast depending on the global strategy, part of an ongoing experimental stuff: a clause in one Watched will be set to exported 2 when promotted.
@@ -485,9 +448,7 @@ bool ParallelSolver::parallelImportClauses() {
 
 		unaryWatchedClauses.push(cr);
 
-		if (plingeling || ca[cr].size() <= 2
-				|| (lbd <= directlyTwoWatchedLbd
-						&& importedClause.size() <= directlyTwoWatchedSize)) { //|| importedRoute == 0) { // importedRoute == 0 means a glue clause in another thread (or any very good clause)
+		if (plingeling || ca[cr].size() <= 2) { //|| importedRoute == 0) { // importedRoute == 0 means a glue clause in another thread (or any very good clause)
 			ca[cr].setOneWatched(false); // Warning: those clauses will never be promoted by a conflict clause (or rarely: they are propagated!)
 			attachClause(cr);
 			nbImportedGoodClauses++;

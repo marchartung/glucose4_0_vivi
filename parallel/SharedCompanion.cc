@@ -119,14 +119,37 @@ Lit SharedCompanion::getUnary(ParallelSolver *s) {
 
 // Specialized functions for this companion
 // must be multithread safe
+// Add a clause to the threads-wide clause database (all clauses, through)
+bool SharedCompanion::addLearnt(ParallelSolver *s, Clause & c) {
+  int sn = s->thn; // thread number of the solver
+  bool ret = false;
+  assert(watchedSolvers.size()>sn);
+
+  pthread_mutex_lock(&mutexSharedClauseCompanion);
+  ret = clausesBuffer.pushClause(sn, c);
+  pthread_mutex_unlock(&mutexSharedClauseCompanion);
+  return ret;
+}
+
+bool SharedCompanion::addLearnt(ParallelSolver *s, const vec<Lit> & c)
+{
+	  int sn = s->thn; // thread number of the solver
+	  bool ret = false;
+	  assert(watchedSolvers.size()>sn);
+
+	  pthread_mutex_lock(&mutexSharedClauseCompanion);
+	  ret = clausesBuffer.pushClause(sn, c);
+	  pthread_mutex_unlock(&mutexSharedClauseCompanion);
+	  return ret;
+}
 
 
-bool SharedCompanion::getNewClause(ParallelSolver *s, int & threadOrigin, vec<Lit>& newclause, unsigned & lbd, ClauseLink * & link) { // gets a new interesting clause for solver s
+bool SharedCompanion::getNewClause(ParallelSolver *s, int & threadOrigin, vec<Lit>& newclause, ClauseLink * & link) { // gets a new interesting clause for solver s
   int sn = s->thn;
   
     // First, let's get the clauses on the big blackboard
     pthread_mutex_lock(&mutexSharedClauseCompanion);
-    bool b = clausesBuffer.getClause(sn, threadOrigin, newclause,lbd,link);
+    bool b = clausesBuffer.getClause(sn, threadOrigin, newclause, link);
     pthread_mutex_unlock(&mutexSharedClauseCompanion);
  
   return b;

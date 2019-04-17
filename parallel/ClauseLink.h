@@ -32,6 +32,11 @@ public:
 
 	void setFailed();
 
+	unsigned getNumRefs() const
+	{
+		return numRefs.load();
+	}
+
 	const vec<Lit> & getVivifiedClause() const;
 	static ClauseLink * get(const unsigned numThreads);
 

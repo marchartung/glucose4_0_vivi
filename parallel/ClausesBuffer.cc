@@ -69,6 +69,7 @@
  * */
 
 #include "parallel/ClausesBuffer.h"
+#include <iostream>
 
 //=================================================================================================
 
@@ -111,12 +112,25 @@ void ClausesBuffer::setNbThreads(int _nbThreads) {
 uint32_t ClausesBuffer::getCap() {
 	return elems.capacity();
 }
+inline unsigned int ClausesBuffer::nextIndex(unsigned int i) {
+	i++;
+	if (i == maxsize)
+		return 0;
+	return i;
+}
+
+inline unsigned int ClausesBuffer::addIndex(unsigned int i, unsigned int a) {
+	i += a;
+	if (i >= maxsize)
+		return i - maxsize;
+	return i;
+}
 
 void ClausesBuffer::removeLastClause() {
 	assert(queuesize > 0);
 	do {
 		unsigned int size = (unsigned int) elems[nextIndex(last)];
-		unsigned int nextlast = addIndex(last, size + headerSize);
+		unsigned int nextlast = addIndex(last, size + 2 + headerSize);
 
 		for (int i = 0; i < nbThreads; i++) {
 			if (lastOfThread[i] == last)
@@ -124,7 +138,7 @@ void ClausesBuffer::removeLastClause() {
 		}
 
 		// printf("Removing clause starting at %d of size %d.\n",nextIndex(last), size);
-		for (unsigned int i = 0; i < size + headerSize; i++) {
+		for (unsigned int i = 0; i < size + 2 + headerSize; i++) {
 			last = nextIndex(last);
 			assert(queuesize > 0);
 			queuesize--;
@@ -137,9 +151,75 @@ void ClausesBuffer::removeLastClause() {
 
 }
 
+// Pushes a single uint to the fifo
+inline void ClausesBuffer::noCheckPush(uint32_t x) {
+	elems[first] = x;
+	first = nextIndex(first);
+}
+
+// Pops a single uint from the fifo
+inline uint32_t ClausesBuffer::noCheckPop(uint32_t & index) {
+	index = nextIndex(index);
+	uint32_t ret = elems[index];
+	return ret;
+}
+
+// Return true if the clause was succesfully added
+bool ClausesBuffer::pushClause(int threadId, Clause & c) {
+	if (!whenFullRemoveOlder
+			&& (queuesize + c.size() + 2 + headerSize >= maxsize))
+		return false; // We need to remove some old clauses
+	while (queuesize + c.size() + 2 + headerSize >= maxsize) { // We need to remove some old clauses
+		forcedRemovedClauses++;
+		removeLastClause();
+		assert(queuesize > 0);
+	}
+	noCheckPush(c.size());
+	noCheckPush(nbThreads > 1 ? nbThreads - 1 : 1);
+	noCheckPush(threadId);
+	if (c.hasClauseLink()) {
+		uint32_t splittedPtr[2];
+		*reinterpret_cast<const void**>(splittedPtr) =
+				reinterpret_cast<const void*>(&c.getClauseLink());
+		noCheckPush(splittedPtr[0]);
+		noCheckPush(splittedPtr[1]);
+		assert(
+				reinterpret_cast<const void*>(&c.getClauseLink())
+						== *reinterpret_cast<const void**>(splittedPtr));
+	} else {
+		noCheckPush(0);
+		noCheckPush(0);
+	}
+	for (int i = 0; i < c.size(); i++)
+		noCheckPush(toInt(c[i]));
+	queuesize += c.size() + 2 + headerSize;
+	return true;
+	//  printf(" -> (%d, %d)\n", first, last);
+}
+
+bool ClausesBuffer::pushClause(int threadId, const vec<Lit> & c) {
+	if (!whenFullRemoveOlder
+			&& (queuesize + 2 + c.size() + headerSize >= maxsize))
+		return false; // We need to remove some old clauses
+	while (queuesize + c.size() + 2 + headerSize >= maxsize) { // We need to remove some old clauses
+		forcedRemovedClauses++;
+		removeLastClause();
+		assert(queuesize > 0);
+	}
+	noCheckPush(c.size());
+	noCheckPush(nbThreads > 1 ? nbThreads - 1 : 1);
+	noCheckPush(threadId);
+	noCheckPush(0);
+	noCheckPush(0);
+	for (int i = 0; i < c.size(); i++)
+		noCheckPush(toInt(c[i]));
+	queuesize += c.size() + 2 + headerSize;
+	return true;
+	//  printf(" -> (%d, %d)\n", first, last);
+}
+
 bool ClausesBuffer::getClause(int threadId, int & threadOrigin,
-		vec<Lit> & resultClause, unsigned & lbd, ClauseLink * & link,
-		bool firstFound) {
+		vec<Lit> & resultClause, ClauseLink * & link, bool firstFound) {
 	assert(lastOfThread.size() > threadId);
 	unsigned int thislast = lastOfThread[threadId];
 	assert(!firstFound || thislast == last); // FIXME: Gilles has this assertion on his cluster
@@ -158,15 +238,15 @@ bool ClausesBuffer::getClause(int threadId, int & threadOrigin,
 	// Go to next clause for this thread id
 	if (!firstFound) {
 		while (nextIndex(thislast) != first
-				&& elems[addIndex(thislast, 4)] == ((unsigned int) threadId)) { // 4 = 2 + 1 + 1
+				&& elems[addIndex(thislast, 3)] == ((unsigned int) threadId)) { // 3 = 2 + 1
 			thislast = addIndex(thislast,
-					elems[nextIndex(thislast)] + headerSize); //
+					elems[nextIndex(thislast)] + 2 + headerSize); //
 			assert(thislast >= 0);
 			assert(thislast < maxsize);
 		}
 		assert(
 				nextIndex(thislast) == first
-						|| elems[addIndex(thislast, 4)]
+						|| elems[addIndex(thislast, 3)]
 								!= (unsigned int )threadId);
 	}
 
@@ -174,29 +254,20 @@ bool ClausesBuffer::getClause(int threadId, int & threadOrigin,
 		lastOfThread[threadId] = thislast;
 		return false;
 	}
-	assert(elems[addIndex(thislast, 4)] != ((unsigned int ) threadId));
+	assert(elems[addIndex(thislast, 3)] != ((unsigned int ) threadId));
 	unsigned int previouslast = thislast;
 	bool removeAfter = false;
-	link = NULL;
 	int csize = noCheckPop(thislast);
-	lbd = noCheckPop(thislast);
 	removeAfter = (--elems[addIndex(thislast, 1)] == 0); // We are sure this is not one of our own clause
 	thislast = nextIndex(thislast); // Skips the removeAfter fieldr
 	threadOrigin = noCheckPop(thislast);
 	assert(threadOrigin != threadId);
-    uint32_t hasViviLink = noCheckPop(thislast);
-    if(hasViviLink)
-    {
-    	uint32_t tmp[2];
-    	tmp[0] = noCheckPop(thislast);
-    	tmp[1] = noCheckPop(thislast);
-    	link = *reinterpret_cast<ClauseLink**>(tmp);
-    }
-    else
-    {
-    	noCheckPop(thislast);
-    	noCheckPop(thislast);
-    }
+
+	uint32_t tmp[2];
+	tmp[0] = noCheckPop(thislast);
+	tmp[1] = noCheckPop(thislast);
+	link = *reinterpret_cast<ClauseLink**>(tmp);
+
 	resultClause.clear();
 	for (int i = 0; i < csize; i++) {
 		resultClause.push(toLit(noCheckPop(thislast)));
