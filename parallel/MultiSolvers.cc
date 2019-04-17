@@ -294,7 +294,7 @@ void MultiSolvers::printStats() {
 		totalconf+=  (long int) solvers[i]->conflicts;
 		totalprop+= solvers[i]->propagations;
 		totalviviprop+= solvers[i]->viviPropagations;
-		totalvivtries+= solvers[i]->numSuccVivs +solvers[i]->numFailVivs;
+		totalvivtries+= solvers[i]->numSuccVivs + solvers[i]->numFailVivs;
 		totalvivsuccs+= solvers[i]->numSuccVivs;
     }
     printf("c \n");
