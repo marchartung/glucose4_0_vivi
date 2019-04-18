@@ -296,9 +296,10 @@ void MultiSolvers::printStats() {
 		totalvivtries+= solvers[i]->numSuccVivs +solvers[i]->numFailVivs;
 		totalvivsuccs+= solvers[i]->numSuccVivs;
     }
+	uint64_t totalVivs = (totalvivtries == 0) ? 1 : totalvivtries;
     printf("c \n");
     printf("c synthesis %11lld conflicts %11lld propagations %8.0f conflicts/sec %8.0f propagations/sec %5.1f%%  vivi props %5.1f%% vivi succ\n",
-            totalconf, totalprop, (double)totalconf / cpu_time, (double) totalprop / cpu_time, 100.0*(double)totalviviprop/totalprop, 100.0*(double)totalvivsuccs/totalvivtries);
+            totalconf, totalprop, (double)totalconf / cpu_time, (double) totalprop / cpu_time, 100.0*(double)totalviviprop/totalprop, 100.0*(double)totalvivsuccs/totalVivs);
 
 
 	nbprinted ++;
