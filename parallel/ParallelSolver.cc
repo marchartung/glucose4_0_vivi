@@ -224,7 +224,9 @@ void ParallelSolver::reduceDB() {
 						const vec<Lit> & vivCl =
 								c.getClauseLink(-1).getVivifiedClause();
 						assert(vivCl.size() > 0);
+						assert(&c == &ca[unaryWatchedClauses[i]]);
 						CRef cr = ca.alloc(vivCl, true);
+						assert(&c == &ca[unaryWatchedClauses[i]]);
 						Clause & newC = ca[cr]; //TODO use implace constructor
 						newC.setLBD(
 								std::min(c.lbd(), (unsigned) vivCl.size() - 1));
