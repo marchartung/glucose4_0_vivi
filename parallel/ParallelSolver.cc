@@ -223,22 +223,21 @@ void ParallelSolver::reduceDB() {
 									> 1) {
 						const vec<Lit> & vivCl =
 								c.getClauseLink(-1).getVivifiedClause();
-						assert(vivCl.size() > 0);
-						assert(&c == &ca[unaryWatchedClauses[i]]);
+						assert(vivCl.size() > 1);
 						CRef cr = ca.alloc(vivCl, true);
-						assert(&c == &ca[unaryWatchedClauses[i]]);
+						Clause & oldC = ca[unaryWatchedClauses[i]];
 						Clause & newC = ca[cr]; //TODO use implace constructor
 						newC.setLBD(
-								std::min(c.lbd(), (unsigned) vivCl.size() - 1));
-						newC.setOneWatched(c.getOneWatched());
+								std::min(oldC.lbd(), (unsigned) vivCl.size() - 1));
+						newC.setOneWatched(oldC.getOneWatched());
 						newC.setSizeWithoutSelectors(vivCl.size());
 						newC.setVivified(true);
-						newC.setCanBeDel(c.canBeDel());
-						newC.setExported(c.getExported());
-						newC.activity() = c.activity();
-						newC.mark(c.mark());
-						newC.setSeen(c.getSeen());
-						removeClause(unaryWatchedClauses[i], c.getOneWatched());
+						newC.setCanBeDel(oldC.canBeDel());
+						newC.setExported(oldC.getExported());
+						newC.activity() = oldC.activity();
+						newC.mark(oldC.mark());
+						newC.setSeen(oldC.getSeen());
+						removeClause(unaryWatchedClauses[i], oldC.getOneWatched());
 						unaryWatchedClauses[j++] = cr;
 						if (newC.getOneWatched())
 							attachClausePurgatory(cr);
