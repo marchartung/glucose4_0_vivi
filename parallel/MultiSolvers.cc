@@ -289,17 +289,23 @@ void MultiSolvers::printStats() {
 	long long int totalviviprop = 0;
 	long long int totalvivtries = 0;
 	long long int totalvivsuccs = 0;
-	for(int i=0;i<solvers.size();i++) {
-		totalconf+=  (long int) solvers[i]->conflicts;
-		totalprop+= solvers[i]->propagations;
-		totalviviprop+= solvers[i]->viviPropagations;
-		totalvivtries+= solvers[i]->numSuccVivs +solvers[i]->numFailVivs;
-		totalvivsuccs+= solvers[i]->numSuccVivs;
-    }
-	uint64_t totalVivs = (totalvivtries == 0) ? 1 : totalvivtries;
-    printf("c \n");
-    printf("c synthesis %11lld conflicts %11lld propagations %8.0f conflicts/sec %8.0f propagations/sec %5.1f%%  vivi props %5.1f%% vivi succ\n",
-            totalconf, totalprop, (double)totalconf / cpu_time, (double) totalprop / cpu_time, 100.0*(double)totalviviprop/totalprop, 100.0*(double)totalvivsuccs/totalVivs);
+	double toalviveffic = 0.0;
+	for (int i = 0; i < solvers.size(); i++) {
+		totalconf += (long int) solvers[i]->conflicts;
+		totalprop += solvers[i]->propagations;
+		totalviviprop += solvers[i]->viviPropagations;
+		totalvivtries += solvers[i]->numSuccVivs + solvers[i]->numFailVivs;
+		totalvivsuccs += solvers[i]->numSuccVivs;
+		toalviveffic += solvers[i]->vivEfficiencySum;
+	}
+	printf("c \n");
+	printf(
+			"c synthesis %11lld conflicts %11lld propagations %8.0f conflicts/sec %8.0f propagations/sec %5.1f%%  vivi props %5.1f%% vivi succ %5.1f%% vivi red\n",
+			totalconf, totalprop, (double) totalconf / cpu_time,
+			(double) totalprop / cpu_time,
+			100.0 * (double) totalviviprop / totalprop,
+			100.0 * (double) totalvivsuccs / totalvivtries,
+			100.0 * (double) toalviveffic / totalvivsuccs);
 
 
 	nbprinted ++;
