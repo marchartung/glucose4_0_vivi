@@ -408,11 +408,12 @@ protected:
 	void removeClause(CRef cr, bool inPurgatory = false); // Detach and free a clause.
 	bool locked(const Clause& c) const; // Returns TRUE if a clause is a reason for some implication in the current state.
 	bool satisfied(const Clause& c) const; // Returns TRUE if a clause is satisfied in the current state.
-	void vivify(const CRef cr, vec<Lit> & out);
+	unsigned vivify(const CRef cr, vec<Lit> & out);
 
 	template<typename VecType>
-	void vivify(const CRef cr, const VecType & c, vec<Lit> & out)
+	unsigned vivify(const CRef cr, const VecType & c, vec<Lit> & out)
 	{
+		unsigned numLevel0 = 0;
 		assert(decisionLevel() == 0);
 		out.clear();
 		CRef prop = CRef_Undef;
@@ -439,10 +440,13 @@ protected:
 					out.clear();
 				break;
 			}
+			else if(level(var(c[i])) == 0)
+				++numLevel0;
 		}
 		if (i == c.size() && out.size() == 0)
 			ok = false;
 		cancelUntil(0);
+		return numLevel0;
 	}
 
 	unsigned int computeLBD(const vec<Lit> & lits, int end = -1);

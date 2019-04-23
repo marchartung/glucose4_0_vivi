@@ -1173,9 +1173,9 @@ CRef Solver::propagateUnaryWatches(Lit p) {
 	return confl;
 }
 
-void Solver::vivify(const CRef cr, vec<Lit> & out) {
+unsigned Solver::vivify(const CRef cr, vec<Lit> & out) {
 	const Clause & c = ca[cr];
-	vivify(cr, c, out);
+	return vivify(cr, c, out);
 }
 
 bool Solver::hasViviBudget(const uint64_t startProps) const {
@@ -1215,8 +1215,8 @@ lbool Solver::vivifyDB() {
 					&& !ca[ref].getClauseLink(-1).lockForVivi())
 				continue;
 			ca[ref].setVivified(true);
-			vivify(ref, vivCl);
-			if (ca[ref].size() > vivCl.size()) {
+			unsigned numTrivial = vivify(ref, vivCl);
+			if (ca[ref].size() - numTrivial > vivCl.size()) {
 				++numSuccVivs;
 				vivEfficiencySum += (double) (ca[ref].size() - vivCl.size())
 						/ ca[ref].size();
