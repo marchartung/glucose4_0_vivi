@@ -1170,18 +1170,16 @@ CRef Solver::propagateUnaryWatches(Lit p) {
 	return confl;
 }
 
-void Solver::vivify(const CRef cr, vec<Lit> & out) {
+unsigned Solver::vivify(const CRef cr, vec<Lit> & out) {
 	const Clause & c = ca[cr];
-	vivify(cr, c, out);
+	return vivify(cr, c, out);
 }
 
 bool Solver::hasViviBudget(const uint64_t startProps) const {
 	uint64_t succVivs = (numSuccVivs == 0) ? 1 : numSuccVivs;
 	return (propagations - startProps + viviPropagations)
 			< propagations
-					* (((double) vivEfficiencySum / succVivs)
-							* (double) succVivs / (succVivs + numFailVivs)
-							+ 0.01);
+					* std::min(0.3,std::max(std::max(((double) vivEfficiencySum / succVivs),(double) succVivs / (succVivs + numFailVivs)),0.01));
 }
 
 lbool Solver::vivifyDB() {
@@ -1201,18 +1199,22 @@ lbool Solver::vivifyDB() {
 		CRef ref = learnts[i];
 		assert(ca[ref].size() > 1);
 		if (!ca[ref].isVivified() && !ca[ref].getOneWatched()
-				&& ca[ref].size() < lbSizeMinimizingClause
-				&& ca[ref].lbd() < lbLBDMinimizingClause && !locked(ca[ref])) {
+				&& (opt_dyn_vivification
+						|| (ca[ref].size() < lbSizeMinimizingClause
+								&& ca[ref].lbd() < lbLBDMinimizingClause))
+				&& !locked(ca[ref])) {
 			if (opt_dyn_vivification && !hasViviBudget(numStartProps))
 				break;
 			ca[ref].setVivified(true);
-			vivify(ref, vivCl);
-			if (ca[ref].size() > vivCl.size()) {
-				++numSuccVivs;
-				vivEfficiencySum += (double) (ca[ref].size() - vivCl.size())
-						/ ca[ref].size();
-			} else
-				++numFailVivs;
+			int numTrivial = vivify(ref, vivCl);
+			if (vivCl.size() > 0) {
+				if (ca[ref].size() - numTrivial > vivCl.size()) {
+					++numSuccVivs;
+					vivEfficiencySum += (double) (ca[ref].size() - vivCl.size()
+							- numTrivial) / ca[ref].size();
+				} else
+					++numFailVivs;
+			}
 			assert(decisionLevel() == 0);
 			if (vivCl.size() == 1) {
 				if (!enqueue(vivCl[0]))
