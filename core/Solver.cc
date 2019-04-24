@@ -1215,7 +1215,7 @@ lbool Solver::vivifyDB() {
 					&& !ca[ref].getClauseLink(-1).lockForVivi())
 				continue;
 			ca[ref].setVivified(true);
-			unsigned numTrivial = vivify(ref, vivCl);
+			int numTrivial = vivify(ref, vivCl);
 			if (ca[ref].size() - numTrivial > vivCl.size()) {
 				++numSuccVivs;
 				vivEfficiencySum += (double) (ca[ref].size() - vivCl.size())
