@@ -124,7 +124,6 @@ public:
 		}
 
 	};
-	std::vector<ViviExpClause> expClauses;
 	vec<Lit> importedClause; // Temporary clause used to copy each imported clause
 	uint64_t nbexported;
 	uint64_t nbimported;
@@ -162,11 +161,11 @@ public:
 	virtual bool parallelImportClauses(); // true if the empty clause was received
 	virtual void parallelImportUnaryClauses();
 	virtual void parallelExportUnaryClause(Lit p);
-	virtual void parallelExportClauseDuringSearch(const CRef & ref, Clause &c);
+	virtual void parallelExportClauseDuringSearch(const CRef & ref);
 	virtual bool parallelJobIsFinished();
 	virtual bool panicModeIsEnabled();
 
-	bool shareClause(const CRef & cref); // true if the clause was succesfully sent
+	bool shareClause(const CRef & cref, const bool direct = false); // true if the clause was succesfully sent
 
 };
 

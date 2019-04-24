@@ -1179,11 +1179,63 @@ bool Solver::hasViviBudget(const uint64_t startProps) const {
 	uint64_t succVivs = (numSuccVivs == 0) ? 1 : numSuccVivs;
 	return (propagations - startProps + viviPropagations)
 			< propagations
-					* std::min(0.3,std::max(std::max(((double) vivEfficiencySum / succVivs),(double) succVivs / (succVivs + numFailVivs)),0.01));
+					* std::min(0.3,
+							std::max(
+									std::max(
+											((double) vivEfficiencySum
+													/ succVivs),
+											(double) succVivs
+													/ (succVivs + numFailVivs)),
+									0.01));
+}
+
+bool Solver::vivifyExchange(CRef & inRef) {
+
+	CRef ref = inRef;
+	assert(ca[ref].size() > 1);
+	ca[ref].setVivified(true);
+	int numTrivial = vivify(ref, vivCl);
+	if (vivCl.size() > 0) {
+		if (ca[ref].size() - numTrivial > vivCl.size()) {
+			++numSuccVivs;
+			vivEfficiencySum += (double) (ca[ref].size() - vivCl.size()
+					- numTrivial) / ca[ref].size();
+		} else
+			++numFailVivs;
+	}
+	assert(decisionLevel() == 0);
+	if (vivCl.size() == 1) {
+		if (!enqueue(vivCl[0]))
+			return false;
+		nbUn++;
+	} else if (vivCl.size() == 0) {
+		if (!ok)
+			return false;
+		inRef = CRef_Undef;
+	} else if (ca[ref].size() > vivCl.size()) {
+		assert(vivCl.size() > 1);
+		CRef cr = ca.alloc(vivCl, true);
+		Clause & newC = ca[cr]; //TODO use implace constructor
+		newC.setLBD(std::min(ca[ref].lbd(), (unsigned) vivCl.size() - 1));
+		newC.setOneWatched(false);
+		newC.setSizeWithoutSelectors(vivCl.size());
+		newC.setVivified(true);
+		newC.setCanBeDel(ca[ref].canBeDel());
+		newC.setExported(ca[ref].getExported());
+		newC.activity() = ca[ref].activity();
+		newC.mark(ca[ref].mark());
+		newC.setSeen(ca[ref].getSeen());
+
+		removeClause(cr);
+		inRef = cr;
+		attachClause(cr);
+	}
+
+	return true;
 }
 
 lbool Solver::vivifyDB() {
-	//return l_Undef;
+//return l_Undef;
 	assert(ok);
 	assert(decisionLevel() == 0);
 	int limit = learnts.size() / 2;
@@ -1191,13 +1243,11 @@ lbool Solver::vivifyDB() {
 	sort(learnts, reduceDB_lt(ca));
 	if (opt_dyn_vivification)
 		sort(&(learnts[limit]), learnts.size() - limit, vivifyDB_lt(ca));
-	//find better part of clauses:
+//find better part of clauses:
 
 	assert(limit <= learnts.size());
-	vec<Lit> vivCl;
 	for (int i = learnts.size() - 1; i >= limit; --i) {
 		CRef ref = learnts[i];
-		assert(ca[ref].size() > 1);
 		if (!ca[ref].isVivified() && !ca[ref].getOneWatched()
 				&& (opt_dyn_vivification
 						|| (ca[ref].size() < lbSizeMinimizingClause
@@ -1205,45 +1255,11 @@ lbool Solver::vivifyDB() {
 				&& !locked(ca[ref])) {
 			if (opt_dyn_vivification && !hasViviBudget(numStartProps))
 				break;
-			ca[ref].setVivified(true);
-			int numTrivial = vivify(ref, vivCl);
-			if (vivCl.size() > 0) {
-				if (ca[ref].size() - numTrivial > vivCl.size()) {
-					++numSuccVivs;
-					vivEfficiencySum += (double) (ca[ref].size() - vivCl.size()
-							- numTrivial) / ca[ref].size();
-				} else
-					++numFailVivs;
-			}
-			assert(decisionLevel() == 0);
-			if (vivCl.size() == 1) {
-				if (!enqueue(vivCl[0]))
-					return l_False;
-				nbUn++;
-			} else if (vivCl.size() == 0) {
-				if (!ok)
-					return l_False;
-				removeClause(ref, false);
+			if (!vivifyExchange(learnts[i]))
+				return l_False;
+			if (learnts[i] == CRef_Undef) {
 				learnts[i] = learnts.last();
 				learnts.pop();
-			} else if (ca[ref].size() > vivCl.size()) {
-				assert(vivCl.size() > 1);
-				CRef cr = ca.alloc(vivCl, true);
-				Clause & newC = ca[cr]; //TODO use implace constructor
-				newC.setLBD(
-						std::min(ca[ref].lbd(), (unsigned) vivCl.size() - 1));
-				newC.setOneWatched(false);
-				newC.setSizeWithoutSelectors(vivCl.size());
-				newC.setVivified(true);
-				newC.setCanBeDel(ca[ref].canBeDel());
-				newC.setExported(ca[ref].getExported());
-				newC.activity() = ca[ref].activity();
-				newC.mark(ca[ref].mark());
-				newC.setSeen(ca[ref].getSeen());
-
-				removeClause(learnts[i]);
-				learnts[i] = cr;
-				attachClause(cr);
 			}
 		}
 	}
@@ -1265,15 +1281,15 @@ void Solver::reduceDB() {
 	nbReduceDB++;
 	sort(learnts, reduceDB_lt(ca));
 
-	// We have a lot of "good" clauses, it is difficult to compare them. Keep more !
+// We have a lot of "good" clauses, it is difficult to compare them. Keep more !
 	if (ca[learnts[learnts.size() / RATIOREMOVECLAUSES]].lbd() <= 3)
 		nbclausesbeforereduce += specialIncReduceDB;
-	// Useless :-)
+// Useless :-)
 	if (ca[learnts.last()].lbd() <= 5)
 		nbclausesbeforereduce += specialIncReduceDB;
 
-	// Don't delete binary or locked clauses. From the rest, delete clauses from the first half
-	// Keep clauses which seem to be usefull (their lbd was reduce during this sequence)
+// Don't delete binary or locked clauses. From the rest, delete clauses from the first half
+// Keep clauses which seem to be usefull (their lbd was reduce during this sequence)
 
 	int limit = learnts.size() / 2;
 
@@ -1343,7 +1359,7 @@ bool Solver::simplify(const bool inSearch) {
 	if (nAssigns() == simpDB_assigns || (simpDB_props > 0))
 		return true;
 
-	// Remove satisfied clauses:
+// Remove satisfied clauses:
 	removeSatisfied(learnts);
 	removeSatisfied(unaryWatchedClauses);
 	if (remove_satisfied)  // Can be turned off.
@@ -1466,10 +1482,10 @@ lbool Solver::search(int nof_conflicts) {
 					nbDL2++;  // stats
 				if (ca[cr].size() == 2)
 					nbBin++;  // stats
-				learnts.push(cr);
 				attachClause(cr);
 				lastLearntClause = cr; // Use in multithread (to hard to put inside ParallelSolver)
 				parallelExportClauseDuringSearch(ca[cr]);
+				learnts.push(cr);
 				claBumpActivity(ca[cr]);
 				uncheckedEnqueue(learnt_clause[0], cr);
 
@@ -1651,7 +1667,7 @@ lbool Solver::solve_(bool do_simp, bool turn_off_simp) // Parameters are useless
 				"c =========================================================================================================\n");
 	}
 
-	// Search:
+// Search:
 	int curr_restarts = 0;
 	while (status == l_Undef) {
 		status = search(0); // the parameter is useless in glucose, kept to allow modifications
@@ -1722,7 +1738,7 @@ void Solver::toDimacs(const char *file, const vec<Lit>& assumps) {
 }
 
 void Solver::toDimacs(FILE* f, const vec<Lit>& assumps) {
-	// Handle case when solver is in contradictory state:
+// Handle case when solver is in contradictory state:
 	if (!ok) {
 		fprintf(f, "p cnf 1 2\n1 0\n-1 0\n");
 		return;
@@ -1731,8 +1747,8 @@ void Solver::toDimacs(FILE* f, const vec<Lit>& assumps) {
 	vec<Var> map;
 	Var max = 0;
 
-	// Cannot use removeClauses here because it is not safe
-	// to deallocate them at this point. Could be improved.
+// Cannot use removeClauses here because it is not safe
+// to deallocate them at this point. Could be improved.
 	int cnt = 0;
 	for (int i = 0; i < clauses.size(); i++)
 		if (!satisfied(ca[clauses[i]]))
@@ -1746,7 +1762,7 @@ void Solver::toDimacs(FILE* f, const vec<Lit>& assumps) {
 					mapVar(var(c[j]), map, max);
 		}
 
-	// Assumptions are added as unit clauses:
+// Assumptions are added as unit clauses:
 	cnt += assumptions.size();
 
 	fprintf(f, "p cnf %d %d\n", max, cnt);
@@ -1764,13 +1780,19 @@ void Solver::toDimacs(FILE* f, const vec<Lit>& assumps) {
 		printf("Wrote %d clauses with %d variables.\n", cnt, max);
 }
 
+
+void          Solver::cleanUpLearnts           ()
+{
+
+}
+
 //=================================================================================================
 // Garbage Collection methods:
 
 void Solver::relocAll(ClauseAllocator& to) {
-	// All watchers:
-	//
-	// for (int i = 0; i < watches.size(); i++)
+// All watchers:
+//
+	cleanUpLearnts();
 	watches.cleanAll();
 	watchesBin.cleanAll();
 	unaryWatches.cleanAll();
@@ -1789,8 +1811,8 @@ void Solver::relocAll(ClauseAllocator& to) {
 				ca.reloc(ws3[j].cref, to);
 		}
 
-	// All reasons:
-	//
+// All reasons:
+//
 	for (int i = 0; i < trail.size(); i++) {
 		Var v = var(trail[i]);
 
@@ -1799,13 +1821,20 @@ void Solver::relocAll(ClauseAllocator& to) {
 			ca.reloc(vardata[v].reason, to);
 	}
 
-	// All learnt:
-	//
+// All learnt:
+//
 	for (int i = 0; i < learnts.size(); i++)
 		ca.reloc(learnts[i], to);
 
-	// All original:
+	// All exports:
 	//
+		for (int i = 0; i < exportClauses.size(); i++)
+			ca.reloc(exportClauses[i].ref, to);
+
+
+
+// All original:
+//
 	for (int i = 0; i < clauses.size(); i++)
 		ca.reloc(clauses[i], to);
 
@@ -1814,8 +1843,8 @@ void Solver::relocAll(ClauseAllocator& to) {
 }
 
 void Solver::garbageCollect() {
-	// Initialize the next region to a size corresponding to the estimated utilization degree. This
-	// is not precise but should avoid some unnecessary reallocations for the new region:
+// Initialize the next region to a size corresponding to the estimated utilization degree. This
+// is not precise but should avoid some unnecessary reallocations for the new region:
 	ClauseAllocator to(ca.size() - ca.wasted());
 
 	relocAll(to);
@@ -1850,11 +1879,11 @@ void Solver::parallelExportClauseDuringSearch(Clause &c) {
 }
 
 bool Solver::parallelJobIsFinished() {
-	// Parallel: another job has finished let's quit
+// Parallel: another job has finished let's quit
 	return false;
 }
 lbool Solver::exportViviClauses(const bool doViv) {
-	// Parallel: another job has finished let's quit
+// Parallel: another job has finished let's quit
 	return l_Undef;
 }
 

@@ -77,8 +77,7 @@ ParallelSolver::ParallelSolver(int threadId) :
 				, limitSharingByFixedLimitLBD(0) // No fixed bound (like 8 in plingeling)
 				, limitSharingByFixedLimitSize(0) // No fixed boud (like 40 in plingeling)
 				, directlyTwoWatchedLbd(opt_max_good_lbd), directlyTwoWatchedSize(
-				opt_max_good_sz), dontExportDirectReusedClauses(
-				opt_dontExportDirectReusedClauses), nbNotExportedBecauseDirectlyReused(
+				opt_max_good_sz), dontExportDirectReusedClauses(false), nbNotExportedBecauseDirectlyReused(
 				0) {
 	useUnaryWatched = true;  // We want to use promoted clauses here !
 }
@@ -149,6 +148,7 @@ struct reduceDB_oneWatched_lt {
 void ParallelSolver::reduceDB() {
 	int i, j;
 	nbReduceDB++;
+	cleanUpLearnts();
 	sort(learnts, reduceDB_lt(ca));
 
 	int limit;
@@ -177,8 +177,8 @@ void ParallelSolver::reduceDB() {
 		if (i == learnts.size() / 2)
 			goodlimitlbd = c.lbd();
 		sumsize += c.size();
-		if (c.lbd() > std::max(directlyTwoWatchedLbd, 2u) && c.size() > 2
-				&& c.canBeDel() && !locked(c) && (i < limit)) {
+		if (c.lbd() > 2 && c.size() > 2 && c.canBeDel() && !locked(c)
+				&& (i < limit) && !c.isMarkedExpVivi()) {
 			removeClause(learnts[i]);
 			nbRemovedClauses++;
 			panicModeLastRemoved++;
@@ -245,9 +245,7 @@ void ParallelSolver::parallelImportClauseDuringConflictAnalysis(Clause &c,
 		c.setExported(c.getExported() + 1);
 		if (!c.wasImported() && c.getExported() == 2) { // It's a new interesting clause:
 			if (c.lbd() == 2
-					|| (c.size() < goodlimitsize && c.lbd() <= goodlimitlbd)
-					|| (c.lbd() <= directlyTwoWatchedLbd
-							&& c.size() <= directlyTwoWatchedSize)) {
+					|| (c.size() < goodlimitsize && c.lbd() <= goodlimitlbd)) {
 				shareClause(confl);
 			}
 		}
@@ -290,12 +288,11 @@ void ParallelSolver::reportProgressArrayImports(
  |  Output: true if the clause is indeed sent
  |________________________________________________________________________________________________@*/
 
-bool ParallelSolver::shareClause(const CRef & cref) {
-	if (opt_exportvivi && ca[cref].size() < lbSizeMinimizingClause
+bool ParallelSolver::shareClause(const CRef & cref, const bool direct) {
+	if (!direct && opt_exportvivi && ca[cref].size() < lbSizeMinimizingClause
 			&& ca[cref].lbd() < lbLBDMinimizingClause) {
-		expClauses.push_back(ViviExpClause(cref, ca[cref]));
-		if (expClauses.size() > 1000)
-			exportViviClauses(false);
+		exportClauses.push( { cref, conflicts });
+		ca[cref].setMarkExpVivi(true);
 		return true;
 	} else {
 		bool sent = sharedcomp->addLearnt(this, ca[cref]);
@@ -308,41 +305,33 @@ bool ParallelSolver::shareClause(const CRef & cref) {
 lbool ParallelSolver::exportViviClauses(const bool doViv) {
 	assert(!doViv || decisionLevel() == 0);
 	if (doViv) {
-		bool exp = false;
+		int i = 0, j = 0;
 		uint64_t numStartProps = propagations;
-		vec<Lit> expC;
-		for (unsigned i = 0; i < expClauses.size(); ++i) {
-			int numTrivial = vivify(expClauses[i].ref,
-					expClauses[i].clause, expC);
-			if (expClauses[i].clause.size() - numTrivial > expC.size()) {
-				++numSuccVivs;
-				vivEfficiencySum += (double) (expClauses[i].clause.size() - expC.size() - numTrivial)
-						/ expClauses[i].clause.size();
-			} else
-				++numFailVivs;
-			if (expC.size() == 0)
-				continue;
-			else if (expC.size() == 1) {
-				if (!enqueue(expC[0]))
+		for (; i < exportClauses.size(); ++i) {
+			if (conflicts - exportClauses[i].confl_stamp > 50) {
+				CRef ref = exportClauses[i].ref;
+				ca[exportClauses[i].ref].setMarkExpVivi(false);
+				if (!vivifyExchange(ref))
 					return l_False;
-				sharedcomp->addLearnt(this, expC[0]);
-				exp = true;
+				if (ref == CRef_Undef)
+					continue;
+
+				shareClause(ref, true);
+				if (ref != exportClauses[i].ref)
+					learnts.push(ref);
 			} else
-				exp = sharedcomp->addLearnt(this, expC);
-
-			if (exp) {
-				nbexported++;
-				exp = false;
-			}
-
+				exportClauses[j++] = exportClauses[i];
 		}
 		viviPropagations += propagations - numStartProps;
-	} else
-		for (unsigned i = 0; i < expClauses.size(); ++i)
-			if (sharedcomp->addLearnt(this, expClauses[i].clause))
-				nbexported++;
-
-	expClauses.clear();
+//		std::cout << "vivi exported  " << exportClauses.size() << " clauses\n";
+		exportClauses.shrink(i - j);
+	} else {
+		for (int i = 0; i < exportClauses.size(); ++i) {
+			shareClause(exportClauses[i].ref, true);
+			ca[exportClauses[i].ref].setMarkExpVivi(false);
+		}
+		exportClauses.clear();
+	}
 	return l_Undef;
 }
 
@@ -447,15 +436,13 @@ void ParallelSolver::parallelExportUnaryClause(Lit p) {
  |
  |________________________________________________________________________________________________@*/
 
-void ParallelSolver::parallelExportClauseDuringSearch(const CRef & ref,
-		Clause &c) {
+void ParallelSolver::parallelExportClauseDuringSearch(const CRef & ref) {
 //
 // Multithread
 // Now I'm sharing the clause if seen in at least two conflicts analysis shareClause(ca[cr]);
+	Clause & c = ca[ref];
 	if ((plingeling && !shareAfterProbation && c.lbd() < 8 && c.size() < 40)
-			|| (c.lbd() <= 2)
-			|| (c.lbd() <= directlyTwoWatchedLbd
-					&& c.size() < directlyTwoWatchedSize)) { // For this class of clauses, I'm sharing them asap (they are Glue CLauses, no probation for them)
+			|| (c.lbd() <= 2)) { // For this class of clauses, I'm sharing them asap (they are Glue CLauses, no probation for them)
 		shareClause(ref);
 		c.setExported(2);
 	}

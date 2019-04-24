@@ -782,6 +782,17 @@ void SimpSolver::cleanUpClauses()
 }
 
 
+void SimpSolver::cleanUpLearnts()
+{
+    occurs.cleanAll();
+    int i,j;
+    for (i = j = 0; i < learnts.size(); i++)
+        if (ca[learnts[i]].mark() == 0)
+        	learnts[j++] = learnts[i];
+    learnts.shrink(i - j);
+}
+
+
 //=================================================================================================
 // Garbage Collection methods:
 

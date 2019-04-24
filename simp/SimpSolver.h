@@ -197,6 +197,7 @@ class SimpSolver : public Solver {
     void          removeClause             (CRef cr,bool inPurgatory=false);
     bool          strengthenClause         (CRef cr, Lit l);
     void          cleanUpClauses           ();
+    virtual void          cleanUpLearnts           () override;
     bool          implied                  (const vec<Lit>& c);
     virtual void          relocAll                 (ClauseAllocator& to);
 };

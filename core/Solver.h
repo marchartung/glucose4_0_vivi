@@ -158,6 +158,7 @@ public:
 	virtual void garbageCollect();
 	void checkGarbage(double gf);
 	void checkGarbage();
+	virtual void          cleanUpLearnts           ();
 
 	// Extra results: (read-only member variable)
 	//
@@ -306,6 +307,12 @@ protected:
 	vec<CRef> clauses;          // List of problem clauses.
 	vec<CRef> learnts;          // List of learnt clauses.
 	vec<CRef> unaryWatchedClauses; // List of imported clauses (after the purgatory) // TODO put inside ParallelSolver
+	struct ExportRef
+	{
+		CRef ref;
+		uint64_t confl_stamp;
+	};
+	vec<ExportRef> exportClauses;
 
 	vec<lbool> assigns;          // The current assignments.
 	vec<char> polarity;         // The preferred polarity of each variable.
@@ -343,6 +350,7 @@ protected:
 	// Temporaries (to reduce allocation overhead). Each variable is prefixed by the method in which it is
 	// used, exept 'seen' wich is used in several places.
 	//
+	vec<Lit> vivCl;
 	vec<char> seen;
 	vec<Lit> analyze_stack;
 	vec<Lit> analyze_toclear;
@@ -409,6 +417,7 @@ protected:
 	bool locked(const Clause& c) const; // Returns TRUE if a clause is a reason for some implication in the current state.
 	bool satisfied(const Clause& c) const; // Returns TRUE if a clause is satisfied in the current state.
 	unsigned  vivify(const CRef cr, vec<Lit> & out);
+	bool vivifyExchange(CRef & cr);
 
 	template<typename VecType>
 	unsigned vivify(const CRef cr, const VecType & c, vec<Lit> & out)
