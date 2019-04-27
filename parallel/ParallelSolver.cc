@@ -62,9 +62,9 @@ extern BoolOption opt_plingeling; // (_cunstable, "plingeling",    "plingeling s
 extern IntOption opt_max_good_lbd;
 extern IntOption opt_max_good_sz;
 
-BoolOption opt_exportvivi(_cunstable, "exp-vivi",
+IntOption opt_exportvivi(_cunstable, "exp-vivi",
 		"delays export until next restart and than vivifies clauses before export",
-		false);
+		0, IntRange(0, 20));
 
 ParallelSolver::ParallelSolver(int threadId) :
 		SimpSolver(), thn(threadId)  // The thread number of this solver
@@ -289,8 +289,8 @@ void ParallelSolver::reportProgressArrayImports(
  |________________________________________________________________________________________________@*/
 
 bool ParallelSolver::shareClause(const CRef & cref, const bool direct) {
-	if (!direct && opt_exportvivi && ca[cref].size() < lbSizeMinimizingClause
-			&& ca[cref].lbd() < lbLBDMinimizingClause) {
+	if (!direct && ca[cref].size() <= opt_exportvivi
+			&& ca[cref].lbd() < lbLBDMinimizingClause && !ca[cref].isVivified()) {
 		exportClauses.push( { cref, conflicts });
 		ca[cref].setMarkExpVivi(true);
 		return true;
@@ -308,7 +308,9 @@ lbool ParallelSolver::exportViviClauses(const bool doViv) {
 		int i = 0, j = 0;
 		uint64_t numStartProps = propagations;
 		for (; i < exportClauses.size(); ++i) {
-			if (conflicts - exportClauses[i].confl_stamp > 50) {
+			if(ca[exportClauses[i].ref].isVivified())
+				shareClause(exportClauses[i].ref, true);
+			else if (conflicts - exportClauses[i].confl_stamp > 50) {
 				CRef ref = exportClauses[i].ref;
 				ca[exportClauses[i].ref].setMarkExpVivi(false);
 				if (!vivifyExchange(ref))

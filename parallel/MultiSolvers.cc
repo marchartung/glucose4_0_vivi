@@ -77,7 +77,7 @@ BoolOption opt_whenFullRemoveOlder(_parallel, "removeolder",
 		false);
 IntOption opt_fifoSizeByCore(_parallel, "fifosize",
 		"Size of the FIFO structure for exchanging clauses between threads, by threads",
-		100000);
+		2000000);
 //
 // Shared options with Solver.cc 
 BoolOption opt_dontExportDirectReusedClauses(_cunstable, "reusedClauses",
