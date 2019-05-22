@@ -53,13 +53,12 @@
 #include "core/SolverTypes.h"
 #include "core/Solver.h"
 #include "simp/SimpSolver.h"
-#include "parallel/SharedCompanion.h"
 #include <vector>
 
 namespace Glucose {
 //=================================================================================================
 //class MultiSolvers;
-//class SolverCompanion;
+class SharedCompanion;
 //   class MultiSolvers;
 
 class ParallelSolver: public SimpSolver {

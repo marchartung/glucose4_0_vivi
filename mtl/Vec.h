@@ -110,6 +110,11 @@ class vec
          for (int i = 0; i < nelems; i++)
             sz--, data[sz].~T();
       }
+
+      const T * getData() const
+      {
+    	  return data;
+      }
       void shrink_(int nelems)
       {
          assert(nelems <= sz);

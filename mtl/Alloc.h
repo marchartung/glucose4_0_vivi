@@ -80,6 +80,11 @@ class RegionAllocator
         sz = cap = wasted_ = 0;
     }
 
+    void reset()
+    {
+    	sz = 0;
+    }
+
     void copyTo(RegionAllocator& to) const {
      //   if (to.memory != NULL) ::free(to.memory);
         to.memory = (T*)xrealloc(to.memory, sizeof(T)*cap);

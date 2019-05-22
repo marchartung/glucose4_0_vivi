@@ -48,6 +48,7 @@
  **************************************************************************************************/
 
 #include "parallel/ParallelSolver.h"
+#include "parallel/SharedCompanion.h"
 #include "mtl/Sort.h"
 
 #include <iostream>
@@ -529,7 +530,7 @@ lbool ParallelSolver::solve_(bool do_simp, bool turn_off_simp) {
 	}
 
 	if (firstToFinish && status == l_True) {
-		extendModel();
+		extendModel(); //FIXME eliminated clauses does not work
 
 		// Extend & copy model:
 		model.growTo(nVars());

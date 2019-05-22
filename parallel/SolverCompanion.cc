@@ -67,21 +67,9 @@ SolverCompanion::~SolverCompanion()
 
 
 bool SolverCompanion::addSolver(ParallelSolver* s) {
-	watchedSolvers.push(s);
+//	watchedSolvers.push(s);
 	return true;
 }
 
-int SolverCompanion::runOnceCompanion() {
-	int errcode = 0;
-	for(int indexSolver = 0; indexSolver<watchedSolvers.size();indexSolver++) {
-	  errcode=runOnceCompanion(watchedSolvers[indexSolver]);
-		if (errcode<0) return errcode;
-	}
-	return errcode;
-}
-
-int SolverCompanion::runOnceCompanion(ParallelSolver*s) {
-	return 0;
-}
 
 

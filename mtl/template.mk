@@ -18,14 +18,14 @@ DCOBJS     = $(addsuffix d,  $(COBJS))
 RCOBJS     = $(addsuffix r,  $(COBJS))
 
 #CXX        ?= /usr/gcc-/bin/g++-4.7.0
-CXX       ?= g++
+CXX       ?= mpic++
 CFLAGS    ?= -Wall -Wno-parentheses -std=c++11
 LFLAGS    ?= -Wall -lpthread 
 
 COPTIMIZE ?= -O3
 
 CFLAGS    += -I$(MROOT) -D __STDC_LIMIT_MACROS -D __STDC_FORMAT_MACROS
-LFLAGS    += -lz
+LFLAGS    += -lz -lmpi
 
 .PHONY : s p d r rs clean 
 

@@ -106,21 +106,20 @@ void MultiSolvers::informEnd(lbool res) {
 	pthread_cond_broadcast(&cfinished);
 }
 
-MultiSolvers::MultiSolvers(ParallelSolver *s) :
+MultiSolvers::MultiSolvers(int & argc, char ** & argv, ParallelSolver *s) :
 		ok(true), maxnbthreads(4), nbthreads(opt_nbsolversmultithreads), nbsolvers(
 				opt_nbsolversmultithreads), nbcompanions(4), nbcompbysolver(2), allClonesAreBuilt(
-				0), showModel(false), winner(-1), var_decay(1 / 0.95), clause_decay(
-				1 / 0.999), cla_inc(1), var_inc(1), random_var_freq(0.02), restart_first(
-				100), restart_inc(1.5), learntsize_factor(
+				0), showModel(false), winner(-1), printTimer(5.0), var_decay(
+				1 / 0.95), clause_decay(1 / 0.999), cla_inc(1), var_inc(1), random_var_freq(
+				0.02), restart_first(100), restart_inc(1.5), learntsize_factor(
 				(double) 1 / (double) 3), learntsize_inc(1.1), expensive_ccmin(
 				true), polarity_mode(polarity_false), maxmemory(opt_maxmemory), maxnbsolvers(
 				opt_maxnbsolvers), verb(0), verbEveryConflicts(10000), numvar(
-				0), numclauses(0)
+				0), numclauses(0), sharedcomp(new SharedCompanion()), mpicomm(
+				argc, argv, sharedcomp)
 
 {
 	result = l_Undef;
-	SharedCompanion *sc = new SharedCompanion();
-	this->sharedcomp = sc;
 
 	// Generate only solver 0.
 	// It loads the formula
@@ -129,22 +128,21 @@ MultiSolvers::MultiSolvers(ParallelSolver *s) :
 	s->verbosity = 0; // No reportf in solvers... All is done in MultiSolver
 	s->setThreadNumber(0);
 	//s->belongsto = this;
-	s->sharedcomp = sc;
-	sc->addSolver(s);
+	s->sharedcomp = this->sharedcomp;
 	assert(solvers[0]->threadNumber() == 0);
 
 	pthread_mutex_init(&m, NULL);  //PTHREAD_MUTEX_INITIALIZER;
 	pthread_mutex_init(&mfinished, NULL); //PTHREAD_MUTEX_INITIALIZER;
 	pthread_cond_init(&cfinished, NULL);
 
-	if (nbsolvers > 0)
+	if (nbsolvers > 0 && verb > 0)
 		fprintf(stdout,
 				"c %d solvers engines and 1 companion as a blackboard created.\n",
 				nbsolvers);
 }
 
-MultiSolvers::MultiSolvers() :
-		MultiSolvers(new ParallelSolver(-1)) {
+MultiSolvers::MultiSolvers(int & argc, char ** & argv) :
+		MultiSolvers(argc, argv, new ParallelSolver(-1)) {
 
 }
 
@@ -165,7 +163,6 @@ void MultiSolvers::generateAllSolvers() {
 		s->verbosity = 0; // No reportf in solvers... All is done in MultiSolver
 		s->setThreadNumber(i);
 		s->sharedcomp = this->sharedcomp;
-		this->sharedcomp->addSolver(s);
 		assert(solvers[i]->threadNumber() == i);
 	}
 
@@ -314,6 +311,8 @@ void MultiSolvers::printStats() {
 			100.0 * (double) totalvivsuccs / totalvivtries,
 			100.0 * (double) toalviveffic / totalvivsuccs);
 	nbprinted++;
+	float mem = memUsed();
+	printf("c Total Memory so far : %.2fMb\n", mem);
 }
 
 // Still a ugly function... To be rewritten with some statistics class some day
@@ -500,7 +499,14 @@ lbool MultiSolvers::solve() {
 	int i;
 
 	adjustNumberOfCores();
-	sharedcomp->setNbThreads(nbsolvers);
+	if (mpicomm.numRanks() > 1) {
+		sharedcomp->setNbThreads(nbsolvers + 1);
+		mpicomm.setThreadId(nbsolvers);
+		mpicomm.setNVars(nVars());
+		if (mpicomm.getRank() > 0)
+			verb = 0;
+	} else
+		sharedcomp->setNbThreads(nbsolvers);
 	if (verb >= 1)
 		printf(
 				"c |  Generating clones                                                                                    |\n");
@@ -531,24 +537,37 @@ lbool MultiSolvers::solve() {
 	bool done = false;
 
 	(void) pthread_mutex_lock(&m);
-	while (!done) {
-		struct timespec timeout;
+	struct timespec timeout;
+	printTimer.reset();
+	while (!done && !mpicomm.isFinished()) {
 		time(&timeout.tv_sec);
-		timeout.tv_sec += MAXIMUM_SLEEP_DURATION;
-		timeout.tv_nsec = 0;
+		timeout.tv_nsec += 1000;
 		if (pthread_cond_timedwait(&cfinished, &mfinished,
-				&timeout) != ETIMEDOUT)
+				&timeout) != ETIMEDOUT) {
+			printf("own thread finished\n");
 			done = true;
-		else
-			printStats();
+			result = sharedcomp->jobStatus;
+			if (result == l_True) {
+				int n = sharedcomp->jobFinishedBy->nVars();
+				model.growTo(n);
+				for (int i = 0; i < n; i++)
+					model[i] = sharedcomp->jobFinishedBy->model[i];
+			}
+			mpicomm.setFinished(result, model);
+		} else if (verb > 0)
+			if (printTimer.isOver()) {
+				printStats();
+				printTimer.reset();
+			}
+		mpicomm.progress();
 
 		float mem = memUsed();
-		if (verb >= 1)
-			printf("c Total Memory so far : %.2fMb\n", mem);
-		if ((maxmemory > 0) && (mem > maxmemory) && !sharedcomp->panicMode)
-			printf(
-					"c ** reduceDB switching to Panic Mode due to memory limitations !\n"), sharedcomp->panicMode =
-					true;
+		if (verb >= 1) {
+			if ((maxmemory > 0) && (mem > maxmemory) && !sharedcomp->panicMode)
+				printf(
+						"c ** reduceDB switching to Panic Mode due to memory limitations !\n"), sharedcomp->panicMode =
+						true;
+		}
 
 	}
 	(void) pthread_mutex_unlock(&m);
@@ -558,13 +577,9 @@ lbool MultiSolvers::solve() {
 	}
 
 	assert(sharedcomp != NULL);
-	result = sharedcomp->jobStatus;
-	if (result == l_True) {
-		int n = sharedcomp->jobFinishedBy->nVars();
-		model.growTo(n);
-		for (int i = 0; i < n; i++)
-			model[i] = sharedcomp->jobFinishedBy->model[i];
-	}
+	if (mpicomm.numRanks() > 1 && mpicomm.getRank() == 0 && result != l_Undef
+			&& sharedcomp->jobFinishedBy == nullptr)
+		mpicomm.getModel(model);
 
 	return result;
 	/*
